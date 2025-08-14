@@ -1,0 +1,107 @@
+repos:
+  # Built-in hooks for basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-docstring-first
+      - id: check-ast
+      - id: check-builtin-literals
+      - id: name-tests-test
+        files: ^tests/.*\.py$
+
+  # Ruff - Modern Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # mypy - Static type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.17.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --install-types, --non-interactive]
+        additional_dependencies:
+          - django-stubs
+          - djangorestframework-stubs
+          - types-requests
+        stages: [pre-push]
+
+  # Safety - Check for known security vulnerabilities
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.4.2
+    hooks:
+      - id: python-safety-dependencies-check
+        stages: [pre-push]
+
+  # Prettier - Format JSON, YAML, Markdown
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types_or: [json, yaml, markdown]
+
+  # detect-secrets - Scan for secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        stages: [pre-push]
+
+  # Commitizen - Conventional commits
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.8.3
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # uv - Fast Python package manager (for dependency checks)
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.8.2
+    hooks:
+      - id: uv-lock
+        stages: [pre-push]
+
+  # Taplo - TOML formatter
+  - repo: https://github.com/ComPWA/taplo-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: taplo-lint
+        args: ["--", "--exclude", "ruff.toml"]
+
+  # codespell - catch common typos (alternative to typos)
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        stages: [pre-push]
+
+# Global settings
+fail_fast: false
+exclude: |
+  (?x)^(
+    migrations/.*|
+    .*\.min\.js|
+    node_modules/.*|
+    build/.*|
+    dist/.*|
+    \.tox/.*|
+    \.venv/.*|
+    violation_sample.py  # skip pre-commit check on this file
+    legacy_code/.*\.py$|          # Exclude all .py files in legacy_code/
+    old_features/.*\.py$|         # Exclude all .py files in old_features/
+    deprecated_modules/.*\.py$|    # Exclude all .py files in deprecated_modules/
+    .pre-commit-config.yaml|
+  )$

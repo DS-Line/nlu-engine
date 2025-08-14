@@ -1,0 +1,155 @@
+preview = true
+line-length = 120
+indent-width = 4
+target-version = "py310"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[lint]
+select = [
+    "F", # Pyflakes
+    "I", # isort
+    "PL", # All pylint rules
+    "N", # naming, docstrings
+
+    "D100", # Missing docstring in public module
+    "D101", # Missing docstring in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public function
+
+    "D205", # 1 blank line required between summary line and description (multi-line)
+    "D208", # Docstring is not indented with the correct amount of space
+    "D209", # Multi-line docstring closing quotes should be on a separate line
+    "D210", # No whitespace allowed immediately after opening quotes
+    "D211", # No whitespace allowed immediately before closing quotes
+
+    "D400", # First line should end with a period
+    "D401", # First line should be imperative mood
+    "D403", # First line should start with a capital letter
+    "D404", # First word of the first line should not be "This"
+    "D414", # Docstring should be a single line when no description is present
+    "D415", # First line should end with a period, exclamation mark, or question mark
+
+    "D417", # Missing argument(s) in docstring (ensures Args/Parameters sections are present)
+    "D418", # Missing return in docstring (ensures Returns section is present)
+    "D419", # Missing yield in docstring (ensures Yields section is present for generators)
+
+    "UP", "B", "C4", "SIM", "TCH", "PTH", "RUF", "ERA", #
+    "ASYNC", "PERF", "FURB", #  async/await best practices, performance anti-patterns,  refactoring suggestions
+    "C90", # enable McCabe complexity checks
+    "ARG", # catches unused function parameters
+    "RET", # improves return statement consistency
+    "PIE", # catches unnecessary code patterns
+    "LOG", # logging best practices
+    "Q", # flake8-quotes (consistent quote usage)
+    "T20", # flake8-print (catch leftover print statements)
+    "ANN", # type annotations
+    "S", # bandit security rules (could replace separate bandit)
+    "FBT", # boolean trap detection
+]
+
+ignore = [
+    "B006", # Do not use mutable data structures as default arguments
+    "COM812", # Trailing comma in Python 3 syntax — not a concern for us
+    "COM819", # Prohibited trailing comma after function arguments — style choice
+    "DJ", # Ignore all Django-specific checks (e.g., flake8-django)
+    "EXE", # Ignore executable file checks (e.g., missing shebang)
+    "T10", # Ignore flake8-debugger (e.g., usage of pdb)
+    "TID", # Ignore flake8-tidy-imports (e.g., relative imports)
+
+    # Docstring rules (we don't enforce full doc coverage or style)
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method (like __str__)
+    "D106", # Missing docstring in nested class
+    "D107", # Missing docstring in __init__ method
+    "D200", # One-line docstring should fit on one line
+    "D205", # Blank line required between summary line and description
+    "D212", # Multi-line docstring should start on the first line
+    "D400", # First line of docstring should end with a period
+    "D401", # First line should be in imperative mood
+    "D415", # First line should end with a period, question mark, or exclamation mark
+
+    "E402", # Module level import not at top of file — allowed for dynamic loading
+
+    "TRY003", # Avoid specifying messages in raise statements — not enforced here
+
+    "TD002", # Missing author in TODO — not needed for internal dev
+    "TD003", # Missing issue link in TODO — we manage TODOs outside code
+
+    "FIX002", # TODO/FIXME/XXX should be capitalized — we allow lowercase
+
+    "S101", # Use of `assert` detected — allowed for internal/testing code
+    "S102", # Use of `exec` detected — allow for dynamic code if necessary
+
+    "A", # Ignore flake8-builtins (e.g., shadowing built-in names like `list`, `str`)
+]
+
+
+fixable = ['ALL']
+unfixable = []
+
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+    "__pycache__",
+    "*/migrations/*",
+    "ruff.toml",
+]
+
+[lint.pylint]
+max-args = 5
+max-statements = 30
+max-branches = 12
+max-returns = 6
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["D"]
+"tests/*.py" = ["D"]
+
+
+[lint.pydocstyle]
+convention = "google"
+ignore-decorators = ["staticmethod", "classmethod"]
+
+
+[lint.mccabe]
+max-complexity = 8
+
+[lint.isort]
+force-single-line = false
+combine-as-imports = true
+split-on-trailing-comma = false
+known-first-party = [
+    "all_metadata",
+    "structuredcore",
+]

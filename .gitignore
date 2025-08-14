@@ -1,0 +1,120 @@
+# Environment & Secrets
+.env
+.env.*
+/.env.4o
+creds.toml
+creds.json
+
+# Bytecode / Cache / Temp
+__pycache__/
+*.py[cod]
+*$py.class
+.pycache/
+.pytype/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytest_cache/
+.cache
+.hypothesis/
+
+*.xlsx
+*.csv
+
+# Logs & Debugging
+*.log
+*.log.*
+logs/
+structuredcore/logging/logs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Build / Packaging / Distribution
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+target/
+
+# IDE / Editor Configs
+.idea/
+.spyderproject
+.spyproject
+.connections/
+.ropeproject
+
+# Python Project Tools
+.pdm.toml
+__pypackages__/
+.pybuilder/
+
+# Virtual Environments (any folder containing "venv")
+*venv*/
+*venv*
+
+# Jupyter / IPython
+*.ipynb
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# Output / Artifact Files
+*.csv
+*.pdf
+*.png
+*.jpeg
+*.jpg
+*.json
+*.zip
+*.so
+*.yaml
+*.yml
+*.db
+*.db.wal
+
+# Django / Flask / Celery / Scrapy
+db.sqlite3
+db.sqlite3-journal
+local_settings.py
+instance/
+.webassets-cache
+celerybeat-schedule
+celerybeat.pid
+.scrapy
+
+# Sphinx / Docs
+docs/_build/
+/site
+
+# Tests / Demos / Temporary Files
+**/*test*/
+**/*test*.py
+temp_unzip/
+.temp_unzip/
+temp_unzip/*
+demo.py
+transpose_csv.py
+
+# Application-specific files/folders
+models/
+migrations/
+run.py
+constant.py
+constants.py
+connections/
+.files/
+all_metadata/
+all_files/

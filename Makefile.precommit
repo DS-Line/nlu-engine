@@ -1,0 +1,52 @@
+.PHONY: install-hooks install-deps ensure-pre-commit secrets-baseline run run-all run-push update clean
+
+# Check if pre-commit is installed
+ensure-pre-commit:
+	@if ! command -v pre-commit >/dev/null 2>&1; then \
+		echo "Installing pre-commit..."; \
+		pip install pre-commit; \
+	fi
+
+# Install common Python tools (optional; edit as needed)
+install-deps:
+	pip install -r requirements.txt || true
+	pip install detect-secrets || true
+
+# Generate .secrets.baseline if it doesn't exist
+secrets-baseline:
+	@if [ ! -f .secrets.baseline ]; then \
+		echo "Generating .secrets.baseline..."; \
+		detect-secrets scan > .secrets.baseline; \
+	else \
+		echo ".secrets.baseline already exists."; \
+	fi
+
+# One-time setup: install everything
+install-hooks: ensure-pre-commit install-deps secrets-baseline
+	pre-commit install
+	pre-commit install --hook-type pre-push
+	pre-commit install --hook-type commit-msg
+	pre-commit install --install-hooks
+	echo "✅ Pre-commit hooks installed."
+
+# Run on staged files (daily use)
+run:
+	pre-commit run
+
+# Run on all files (for full repo scan)
+run-all:
+	pre-commit run --all-files
+
+# Simulate pre-push manually
+run-push:
+	pre-commit run --hook-stage pre-push --all-files
+
+# Update all hooks
+update:
+	pre-commit autoupdate
+	echo "🔄 Hooks updated. Run 'make -f Makefile.precommit install-hooks' again if needed."
+
+# Clean pre-commit cache
+clean:
+	pre-commit clean
+	rm -rf .pre-commit-config.yaml.lock
