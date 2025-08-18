@@ -36,14 +36,14 @@ repos:
           - django-stubs
           - djangorestframework-stubs
           - types-requests
-        stages: [pre-push]
+        stages: [commit-msg]
 
   # Safety - Check for known security vulnerabilities
   - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
     rev: v1.4.2
     hooks:
       - id: python-safety-dependencies-check
-        stages: [pre-push]
+        stages: [commit-msg]
 
   # Prettier - Format JSON, YAML, Markdown
   - repo: https://github.com/pre-commit/mirrors-prettier
@@ -58,7 +58,7 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
-        stages: [pre-push]
+        stages: [commit-msg]
 
   # Commitizen - Conventional commits
   - repo: https://github.com/commitizen-tools/commitizen
@@ -72,7 +72,7 @@ repos:
     rev: 0.8.2
     hooks:
       - id: uv-lock
-        stages: [pre-push]
+        stages: [commit-msg]
 
   # Taplo - TOML formatter
   - repo: https://github.com/ComPWA/taplo-pre-commit
@@ -86,7 +86,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        stages: [pre-push]
+        stages: [commit-msg]
 
 # Global settings
 fail_fast: false
