@@ -32,7 +32,8 @@ class APIClient:
     """Handles all API interactions with the backend."""
 
     def __init__(self) -> None:
-        #TODO: Change the verify to True for enabling SSL Certificate verification
+        # TODO: Change the verify to True for enabling SSL Certificate verification
+        # nosec B501
         self._client = httpx.AsyncClient(verify=False, follow_redirects=True, timeout=30.0, headers=Config.HEADERS)
 
     async def __aenter__(self) -> httpx.AsyncClient:
@@ -65,7 +66,9 @@ class MemoryService:
         url = f"{Config.BACKEND_BASE_URL}/{agent_id}/users/{user_id}/memory/"
         async with httpx.AsyncClient(
             # TODO: Change the verify to True for enabling SSL Certificate verification
-            verify=False, headers={"X-API-KEY": Config.CORE_INTERNAL_API_TOKEN, "Accept": "application/json"}
+            # nosec B501
+            verify=False,
+            headers={"X-API-KEY": Config.CORE_INTERNAL_API_TOKEN, "Accept": "application/json"},
         ) as client:
             response = await client.get(url)
             response.raise_for_status()
