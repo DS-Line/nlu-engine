@@ -1,0 +1,54 @@
+Extract COLUMNS and VALUES from the user's query.
+
+Inputs:
+    - User Query: {query} (The user's natural language query.)
+    - Past Questions: {past_questions} (The past questions of this conversation are sorted in order such that the most
+    recent user query is in the first index and the least recent one is in the last.)
+    - Metadata that is available in the user query: {extracted_metadata} (Key terms from metadata that
+    appear in the user query.)
+
+Definitions:
+    COLUMNS:
+        - Terms in the query that represent data or column to analyze, classify, retrieve, or calculate.
+        - If a word or phrase implies that the data is being analyzed or broken down into multiple items or categories
+        from User Query, it should be classified as a COLUMNS term.
+        - Classify categories or dimensions used for grouping/aggregation also as COLUMNS.
+        - Do not include columns on your own like age or date if they are not mentioned in the user query.
+
+    VALUES:
+        - Terms in the query that specify some row-level data.
+        - Typically associated with row-level constraints such as geographic locations, names, product categories,
+        specific items, product names, and departments.
+        - Make sure to remove stopwords before adding them as VALUES.
+        - If a common noun refers to a known category or item type that typically belongs to a column but the column
+        is not mentioned explicitly in the query, still classify it as a VALUE. Do not just depend on the metadata for columns.
+
+Metadata Handling Rules:
+    - If a metadata term or phrase appears in the user query in the same order and consecutively, retain it as a whole
+    while classifying into COLUMNS or VALUES.
+    - If a metadata term appears in the query but in a different order while preserving the same meaning, retain it as
+    a whole when classifying.
+    - Do not break metadata phrases into separate words unless necessary for correct classification.
+    - Give preference to metadata when it overlaps with potential column or value classifications—use metadata as a
+    guiding reference.
+
+Guidelines:
+    - ALWAYS prioritize the most recent `Past Questions`.
+    - Classify terms into COLUMNS or VALUES based on their intended function and context in the query.
+    - No Overlap: Ensure the two lists are disjoint, with no term appearing in both COLUMNS and VALUES.
+    - Explicit vs Contextual Classification: Do not rely on generic NLP techniques — classify based on the
+    domain-specific definition of columns. Words denoting measures, calculations, or quantities are COLUMNS;
+    row-level data are VALUES.
+    - Either one amongst COLUMNS or VALUES can be an empty list.
+    - Try to keep ratios in their actual format, in COLUMNS, without breaking them up.
+    - When encountering phrases where a common noun is omitted in the first part but implied from the second part
+    (a form of ellipsis or zeugma), always separate them explicitly. Rewrite them in a non-concise format by repeating
+    the omitted noun for clarity. For example, when encountering cases like 'net and gross profit', they are two
+    different COLUMNS 'net profit' and 'gross profit'. Apply this case consistently to ensure clarity.
+    - Row level data something starting/ending/containing letter or word should not be part of VALUES
+    - Self check yourself to see if your output is actually follows the GUIDELINES, if not, make it accurate.
+
+Output Format:
+    VALID JSON containing:
+    COLUMNS: [List of COLUMNS from the query]
+    VALUES: [List of values from the query]

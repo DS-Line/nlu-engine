@@ -1,7 +1,7 @@
 repos:
   # Built-in hooks for basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -20,7 +20,7 @@ repos:
 
   # Ruff - Modern Python linter and formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.4
+    rev: v0.12.9
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -28,7 +28,7 @@ repos:
 
   # mypy - Static type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.0
+    rev: v1.17.1
     hooks:
       - id: mypy
         args: [--ignore-missing-imports, --install-types, --non-interactive]
@@ -69,7 +69,7 @@ repos:
 
   # uv - Fast Python package manager (for dependency checks)
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.8.2
+    rev: 0.8.11
     hooks:
       - id: uv-lock
         stages: [commit-msg]
