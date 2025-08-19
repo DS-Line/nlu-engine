@@ -12,6 +12,8 @@ from src.utils.logger import create_logger
 logger = create_logger(level="DEBUG")
 
 HTTP_STATUS_NOT_FOUND = 404
+APP_ENV = config("APP_ENV", default="dev")
+VERIFY_SSL = APP_ENV != "dev"
 
 
 class Config:
@@ -27,12 +29,11 @@ class Config:
     }
 
 
-# --- API Client ---
 class APIClient:
     """Handles all API interactions with the backend."""
 
     def __init__(self) -> None:
-        self._client = httpx.AsyncClient(verify=False, follow_redirects=True, timeout=30.0, headers=Config.HEADERS)  # noqa S501
+        self._client = httpx.AsyncClient(verify=VERIFY_SSL, follow_redirects=True, timeout=30.0, headers=Config.HEADERS)
 
     async def __aenter__(self) -> httpx.AsyncClient:
         return self._client
@@ -54,7 +55,6 @@ class APIClient:
         await self._client.aclose()
 
 
-# --- Memory Operations ---
 class MemoryService:
     """Manages CRUD operations for memories."""
 
@@ -63,7 +63,7 @@ class MemoryService:
         """Fetches all memories for a given user and agent."""
         url = f"{Config.BACKEND_BASE_URL}/{agent_id}/users/{user_id}/memory/"
         async with httpx.AsyncClient(
-            verify=False,  # noqa S501
+            verify=VERIFY_SSL,
             headers={"X-API-KEY": Config.CORE_INTERNAL_API_TOKEN, "Accept": "application/json"},
         ) as client:
             response = await client.get(url)
@@ -161,7 +161,6 @@ class MemoryService:
         return deleted_count == len(memory_ids)
 
 
-# --- Command Handlers and Utilities ---
 class MemoryManager:
     """
     A unified utility class for detecting, validating, parsing, and executing
