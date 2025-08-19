@@ -1,20 +1,14 @@
-import asyncio
-import time
 from typing import Any
-
-from decouple import config
 
 from metadata.loader import get_metadata_from_directory
 from src.exceptions import AgentIDNotFoundError, DatabaseConfigNotFoundError, UserQueryNotFoundError
 from src.managers.memory_manager import MemoryManager
-from src.managers.mongodb_manager import AsyncMongoDBManager
+from src.managers.mongodb_manager import log_database_diagnostics, setup_mongo
 from src.orchestrator import Orchestrator
 from src.services.data_search_service import AsyncSearchEngine
 from src.utils.logger import create_logger
 
 logger = create_logger(level="DEBUG")
-MONGO_URI = config("KV_STORE_CONNECTION_URI")
-MONGO_DB = config("KV_STORE_NAME")
 
 
 class NLUEngine:
@@ -71,51 +65,7 @@ class NLUEngine:
         return await self.query_handler.invoke(user_query)
 
 
-async def setup_mongo() -> AsyncMongoDBManager:
-    """Initialize and connect to MongoDB."""
-    mongo_manager = AsyncMongoDBManager(uri=MONGO_URI, database=MONGO_DB)
-    await mongo_manager.connect()
-    if not await mongo_manager.health_check():
-        raise RuntimeError("MongoDB connection is not healthy")
-    return mongo_manager
-
-
-async def log_database_diagnostics(mongo_manager: AsyncMongoDBManager) -> None:
-    """Log collections and sample documents for diagnostics."""
-    logger.info("--- STARTING ASYNC DATABASE DIAGNOSTICS ---")
-    try:
-        db = mongo_manager.db
-        all_collections = await db.list_collection_names()
-        logger.info(f"Collections in '{MONGO_DB}': {all_collections}")
-
-        expected_collection = "DWH_D_PLAYERS_attributes"
-        if expected_collection in all_collections:
-            player_collection = db[expected_collection]
-            doc_count = await player_collection.count_documents({})
-            logger.info(f"'{expected_collection}' contains {doc_count} documents.")
-            if doc_count > 0:
-                sample_doc = await player_collection.find_one({})
-                logger.info(sample_doc)
-        else:
-            logger.error(f"Expected collection '{expected_collection}' not found.")
-    except Exception as e:
-        logger.error(f"Database diagnostics error: {e}")
-    logger.info("--- ENDING ASYNC DATABASE DIAGNOSTICS ---")
-
-
-def prepare_nlu_engine_arguments(**kwargs: object) -> dict:
-    """Return the arguments dictionary for NLUEngine initialization."""
-    return {
-        "agent_id": kwargs.get("agent_id"),
-        "metadata": kwargs.get("metadata"),
-        "db_config": kwargs.get("db_config"),
-        "clarification_history": kwargs.get("clarification_history"),
-        "ignore_history": kwargs.get("ignore_history"),
-        "search_engine": kwargs.get("async_search_engine"),
-    }
-
-
-async def main() -> None:
+async def nlu_engine(**kwargs: object) -> dict[str, Any] | None:
     """
     Entry point for running the NLU Engine.
 
@@ -123,51 +73,34 @@ async def main() -> None:
     (e.g., agent ID, database settings) and invokes the query
     processing pipeline.
     """
-    agent_id = "1839af40-70c3-45bf-af7c-d8b08bab3c15"
-    user_id = "cfecc156-785a-4e9f-94ac-47261693b3b0"
-    tables_to_sync = {
-        "DWH_D_GAMES": ["gamecode", "season", "season_name", "game_time", "arena_name"],
-        "DWH_D_PLAYERS": ["full_name", "playercode", "player_slug", "games_played_flag"],
-        "DWH_D_TEAMS": ["full_name", "abbreviation", "nickname", "city", "state"],
-        "DWH_F_PLAYER_BOXSCORE": ["position", "jerseynum"],
-        "DWH_F_PLAYER_TRACKING": ["position"],
-        "DWH_F_TEAM_BOX_SCORE": [],
-    }
-
-    asset_names_for_loader = [f"sem_{t.lower()}" for t in tables_to_sync]
+    agent_id = kwargs.get("agent_id")
+    user_id = kwargs.get("user_id")
+    user_query = kwargs.get("user_query")
+    tables = kwargs.get("tables")
+    db_config = kwargs.get("db_config")
+    clarification_history = kwargs.get("clarification_history")
+    ignore_history = kwargs.get("ignore_history")
+    asset_names_for_loader = [f"sem_{t.lower()}" for t in tables]
     metadata = list(get_metadata_from_directory(asset_names_for_loader))
-    db_config = {"host": "localhost", "port": 5432}
 
     try:
         mongo_manager = await setup_mongo()
     except Exception as e:
         logger.critical(f"Failed MongoDB setup: {e}")
-        return
+        return {"Error": f"Failed MongoDB setup: {e}"}
 
     await log_database_diagnostics(mongo_manager)
 
-    async_search_engine = AsyncSearchEngine(mongo_manager=mongo_manager, tables_to_sync=list(tables_to_sync.keys()))
+    async_search_engine = AsyncSearchEngine(mongo_manager=mongo_manager, tables_to_sync=list(tables.keys()))
 
-    clarification_history = [
-        (
-            "SELECT player_name, points, assists FROM sem_dwh_f_player_boxscore WHERE player_name='Stephen Curry';",
-            "What were Stephen Curry's stats this season?",
-        ),
-        (
-            "SELECT player_name, points, assists FROM sem_dwh_f_player_boxscore WHERE player_name='Kevin Durant';",
-            "What were Kevin Durant's stats this season?",
-        ),
-    ]
-    user_query = "whats the scores of kobe bryant this season"
-    arguments = prepare_nlu_engine_arguments(
-        agent_id=agent_id,
-        metadata=metadata,
-        db_config=db_config,
-        clarification_history=clarification_history,
-        ignore_history=True,
-        async_search_engine=async_search_engine,
-    )
-
+    arguments = {
+        "agent_id": agent_id,
+        "metadata": metadata,
+        "db_config": db_config,
+        "clarification_history": clarification_history,
+        "ignore_history": ignore_history,
+        "search_engine": async_search_engine,
+    }
     try:
         if user_query.strip().startswith("/memory."):
             result = await MemoryManager.invoke(user_query=user_query, agent_id=agent_id, user_id=user_id)
@@ -175,12 +108,7 @@ async def main() -> None:
             engine = NLUEngine(**arguments)
             result = await engine.invoke(user_query=user_query)
         logger.info(f"Result: {result}")
+        return result
     except (AgentIDNotFoundError, DatabaseConfigNotFoundError, UserQueryNotFoundError) as e:
         logger.error(f"Error: {e}")
-
-
-if __name__ == "__main__":
-    tic = time.time()
-    asyncio.run(main())
-    toc = time.time() - tic
-    logger.info(f"Run Time: {toc}")
+        return {"Error": e}
