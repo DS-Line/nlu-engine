@@ -1,5 +1,6 @@
 import asyncio
 import re
+from collections import defaultdict
 from typing import Any
 
 import nltk
@@ -42,6 +43,7 @@ class Orchestrator:
         self._metadata = kwargs.get("metadata")
         self.clarification_history = kwargs.get("clarification_history")
         self._ignore_history = kwargs.get("ignore_history")
+        self.search_engine = kwargs.get("search_engine")
         self.state: dict[str, Any] = {}
         self._validate_inputs()
 
@@ -160,6 +162,71 @@ class Orchestrator:
 
         return [token for token in query_tokens if token not in single_resolved_words]
 
+    async def _resolve_unresolved_tokens_async(self, unresolved_tokens: list[str]) -> dict[str, Any]:
+        """
+        Asynchronously resolves a list of tokens by running all database searches
+        concurrently and formats the output into the desired detailed structure.
+        """
+        if not unresolved_tokens:
+            return {
+                "resolution_details": [],
+                "keys_resolved_values": [],
+                "keys_unresolved_values": [],
+            }
+
+        logger.debug(f"Attempting to resolve tokens concurrently: {unresolved_tokens}")
+
+        search_tasks = [self.search_engine.perform_combined_search_async(token) for token in unresolved_tokens]
+        suggestion_tasks = [self.search_engine.perform_spelling_suggestions_async(token) for token in unresolved_tokens]
+
+        all_search_results = await asyncio.gather(*search_tasks)
+        all_suggestion_results = await asyncio.gather(*suggestion_tasks)
+
+        resolution_details = []
+        keys_resolved = []
+        keys_still_unresolved = []
+
+        for token, separated_results, spelling_suggestions in zip(
+            unresolved_tokens, all_search_results, all_suggestion_results, strict=False
+        ):
+            exact_matches = separated_results.get("exact", [])
+
+            if exact_matches:
+                keys_resolved.append(token)
+                mappings = defaultdict(set)
+                for match in exact_matches:
+                    table, attribute = match.get("table"), match.get("attribute")
+                    if table and attribute:
+                        mappings[table].add(attribute)
+
+                final_mappings = {table: sorted(attrs) for table, attrs in mappings.items()}
+                resolution_details.append({
+                    "token": token,
+                    "resolved": "Yes",
+                    "key_value_mappings": final_mappings,
+                    "spelling_suggestion": [],
+                })
+            else:
+                keys_still_unresolved.append(token)
+                fuzzy_matches = separated_results.get("fuzzy", [])
+                suggestions = set(spelling_suggestions or [])
+                for f_match in fuzzy_matches:
+                    suggestions.update(f_match.get("matched_values", []))
+
+                resolution_details.append({
+                    "token": token,
+                    "resolved": "No",
+                    "key_value_mappings": {},
+                    "spelling_suggestion": sorted(suggestions),
+                })
+
+        logger.info(f"Resolved values: {keys_resolved}, Unresolved values: {keys_still_unresolved}")
+        return {
+            "resolution_details": resolution_details,
+            "keys_resolved_values": keys_resolved,
+            "keys_unresolved_values": keys_still_unresolved,
+        }
+
     async def _classify_and_process(
         self, query_chunks: list[str], extracted_metadata: dict[str, Any]
     ) -> tuple[set, set]:
@@ -172,15 +239,19 @@ class Orchestrator:
 
         return await classification_task
 
-    def _assemble_final_state(self, query: str, condensed_query: str, all_columns: set, all_values: set) -> None:
+    def _assemble_final_state(self, **kwargs: object) -> None:
         """Helper to assemble the final state dictionary."""
         previous_sql_queries, previous_user_queries = self._get_previous_queries()
         value_to_column_map = self._extract_where_filters_from_sql(previous_sql_queries)
 
-        filtered_mappings = filter_value_mappings_by_query(value_to_column_map, query)
-        self.state["user_query"] = query
-        self.state["condensed_query"] = condensed_query
+        filtered_mappings = filter_value_mappings_by_query(value_to_column_map, kwargs.get("query"))
+        self.state["user_query"] = kwargs.get("query")
+        self.state["condensed_query"] = kwargs.get("condensed_query")
+        self.state["key_resolution"] = kwargs.get("resolved_keys_info")
         self.state["value_mappings"] = filtered_mappings
+        self.state["extracted_metadata"] = kwargs.get("extracted_metadata")
+        all_columns = kwargs.get("all_columns")
+        all_values = kwargs.get("all_values")
         self.state["all_columns"] = normalize_and_filter_terms(list(all_columns), self.state["value_mappings"])
         self.state["all_values"] = normalize_and_filter_terms(list(all_values), self.state["value_mappings"])
         self.state["previous_user_queries"] = previous_user_queries
@@ -189,25 +260,41 @@ class Orchestrator:
         """
         The main handler method to process a user's query.
         """
-        # Step 1: Pre-processing and initial async setup
         greeting_task = self._start_initial_tasks(query)
         condensed_query = await self._condense_question(query)
 
-        # Step 2: Synchronous metadata extraction and query pre-processing
         extracted_metadata, used_keywords_from_query, query_chunks = self._process_metadata_and_query(query)
 
-        # Step 3: Handle async tasks and initial checks
+        query_processor = QueryProcessor(max_words=10)
+        query_chunks = query_processor.split(query)
+
+        text_preprocessor = TextPreprocessor()
+        _query_tokens = text_preprocessor.process(query)
+
+        resolved_phrases = set(used_keywords_from_query)
+        single_resolved_words = set()
+        for phrase in resolved_phrases:
+            single_resolved_words.update(phrase.split())
+
         if await self._handle_greetings(greeting_task):
             return {"is_greeting": True, "response": await greeting_task}
 
-        # Step 4: Resolve date types and tokens
         unresolved_tokens = self._resolve_tokens(query, used_keywords_from_query)
 
-        # Step 5: Execute async classification and process results
+        token_resolution_task = asyncio.create_task(self._resolve_unresolved_tokens_async(unresolved_tokens))
+
+        resolved_keys_info = await asyncio.gather(token_resolution_task)
+
         all_columns, all_values = await self._classify_and_process(query_chunks, extracted_metadata)
 
-        # Step 6: Final state assembly
-        self._assemble_final_state(query, condensed_query, all_columns, all_values)
+        self._assemble_final_state(
+            query=query,
+            condensed_query=condensed_query,
+            extracted_metadata=extracted_metadata,
+            all_columns=all_columns,
+            all_values=all_values,
+            resolved_keys_info=resolved_keys_info,
+        )
 
         logger.info(f"Unresolved Tokens: {unresolved_tokens}")
 

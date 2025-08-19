@@ -1,46 +1,48 @@
-import concurrent
+import asyncio
 import datetime
 import json
 import logging
 import re
-from collections.abc import Collection
 from typing import Any
 
+import nltk
+
+try:
+    pass
+except (LookupError, OSError):
+    nltk.download("wordnet", quiet=True)
+
+from itertools import starmap
+
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo import TEXT
 from sqlalchemy import text
 
-from src.managers.mongodb_manager import MongoDBManager
+from src.managers.mongodb_manager import AsyncMongoDBManager
 
 logger = logging.getLogger(__name__)
 
 
-class DataCache:
+class AsyncDataCache:
     """
     Handles fetching data from Snowflake and storing it in MongoDB.
-    This class now focuses purely on the data processing logic.
     """
 
     def __init__(
-        self, snowflake_conn: object, mongo_manager: MongoDBManager, tables_to_sync: dict[str, list[str]]
+        self, snowflake_conn: object, mongo_manager: AsyncMongoDBManager, tables_to_sync: dict[str, list[str]]
     ) -> None:
+        """
+        Initializes the async data cache.
+
+        Args:
+            snowflake_conn: An Snowflake connection object.
+            mongo_manager: An instance of AsyncMongoDBManager.
+            tables_to_sync: A dictionary of table names to lists of their attributes.
+        """
         self.sf_conn = snowflake_conn
         self.mongo_manager = mongo_manager
         self.tables_to_sync = tables_to_sync
         self.attribute_threshold = 50
-        self.max_workers = 4
-
-    def connect_mongodb(self) -> None:
-        """Initializes the MongoDB connection."""
-        self.mongo_manager.connect()
-        logger.info("MongoDB connection initialized")
-
-    @staticmethod
-    def _flatten_values_for_search(values: list[Any]) -> str:
-        """Flattens a list of values into a single string for text indexing."""
-        processed_values = [
-            json.dumps(val, ensure_ascii=False) if isinstance(val, (list, dict)) else str(val).strip() for val in values
-        ]
-        return " ".join(processed_values)[:50000]
 
     @staticmethod
     def _validate_identifier(identifier: str) -> str:
@@ -49,72 +51,105 @@ class DataCache:
             raise ValueError(f"Invalid SQL identifier: {identifier}")
         return identifier
 
-    def _get_column_values(self, table_name: str, column_name: str) -> list[str]:
-        """Fetch distinct, non-null values for a given column from a Snowflake table."""
-
+    async def refresh_tables(self) -> None:
+        """
+        Coordinates the concurrent refreshing of all tables if a refresh is needed.
+        This is the main entry point for the caching process.
+        """
         try:
-            # Validate table and column names
-            table_name = self._validate_identifier(table_name)
-            column_name = self._validate_identifier(column_name)
+            # Ensure the MongoDB connection is verified
+            await self.mongo_manager.connect()
+            if not await self.should_refresh_data():
+                return
+            logger.info("Data refresh triggered for tables: " + ", ".join(self.tables_to_sync.keys()))
+            process_tasks = list(starmap(self.process_table, self.tables_to_sync.items()))
+            results = await asyncio.gather(*process_tasks, return_exceptions=True)
 
-            # Build the query safely
-            query = text("SELECT DISTINCT :column_name FROM :table_name WHERE :column_name IS NOT NULL LIMIT 5000")
+            for task_result, table_name in zip(results, self.tables_to_sync.keys(), strict=False):
+                if isinstance(task_result, Exception):
+                    logger.error(f"Error processing table {table_name}: {task_result}")
+                else:
+                    logger.info(f"Successfully processed table: {table_name}")
 
-            # Execute
-            with self.sf_conn.cursor() as cursor:
-                cursor.execute(query, {"column_name": column_name, "table_name": table_name})
-                return [row[0] for row in cursor if row[0] is not None]
+            await self.mongo_manager.update_refresh_timestamp()
+            logger.info("Data refresh complete.")
 
         except Exception as e:
-            logger.debug(f"Error fetching values for column {column_name} in table {table_name}: {e}")
-            return []
+            logger.error(f"An error occurred during the table refresh process: {e}")
+            raise
 
-    @staticmethod
-    def _create_text_index(collection: Collection, index_fields: list[tuple[str, int]]) -> None:
-        """Drops any existing text index and creates a new one."""
-        try:
-            existing_indexes = collection.index_information()
-            for index_name in existing_indexes:
-                if "text" in str(existing_indexes[index_name]):
-                    collection.drop_index(index_name)
-            if index_fields:
-                collection.create_index(index_fields, name="text_search_idx", background=True)
-                logger.debug(f"Created text index for {collection.name}")
-        except Exception as e:
-            logger.warning(f"Could not create text index for {collection.name}: {e}")
+    async def should_refresh_data(self) -> bool:
+        """
+        Determines if a full data refresh is needed by checking
+        the timestamp and for the existence of data in collections.
+        """
+        last_refresh_date = await self.mongo_manager.get_refresh_timestamp()
+        today = datetime.date.today().isoformat()
 
-    def process_table_single_document(self, table_name: str, selected_attributes: list[str]) -> None:
-        """Processes a single table and stores all its attributes in one MongoDB document."""
+        if last_refresh_date != today:
+            logger.info("Last refresh date is not today. Refreshing data.")
+            return True
+
+        check_tasks = []
+        for table in self.tables_to_sync:
+            collection = self.mongo_manager.get_collection(f"{table}_attributes")
+            check_tasks.append(collection.count_documents({}))
+
+        counts = await asyncio.gather(*check_tasks)
+
+        for count, table in zip(counts, self.tables_to_sync.keys(), strict=False):
+            if count == 0:
+                logger.info(f"Collection {table}_attributes is empty. Refreshing data.")
+                return True
+
+        logger.info("Data is up-to-date. Skipping refresh.")
+        return False
+
+    async def process_table(self, table_name: str, attributes: list[str]) -> None:
+        """Main method to determine the processing strategy for a table."""
+        if not attributes:
+            logger.warning(f"No attributes to process for table {table_name}")
+            return
+
+        if len(attributes) <= self.attribute_threshold:
+            await self.process_table_single_document(table_name, attributes)
+        else:
+            await self.process_table_multiple_documents(table_name, attributes)
+
+    async def process_table_single_document(self, table_name: str, selected_attributes: list[str]) -> None:
+        """Processes a table and stores all its attributes in one MongoDB document."""
         collection_name = f"{table_name}_attributes"
         collection = self.mongo_manager.get_collection(collection_name)
-        collection.delete_many({})
+        await collection.delete_many({})
+
         table_doc = {"table_name": table_name, "attributes": {}, "search_text": {}}
 
         for column in selected_attributes:
-            values = self._get_column_values(table_name, column)
+            values = await self._get_column_values(table_name, column)
             if values:
                 table_doc["attributes"][column] = {"name": column, "sample_values": values}
                 table_doc["search_text"][column] = self._flatten_values_for_search(values)
 
         if table_doc["attributes"]:
-            collection.insert_one(table_doc)
+            await collection.insert_one(table_doc)
             index_fields = [(f"search_text.{col}", TEXT) for col in table_doc["attributes"]]
-            self._create_text_index(collection, index_fields)
-            logger.info(
-                f"Stored {len(table_doc['attributes'])} attributes for table {table_name} in a single document."
-            )
+            await self._create_text_index(collection, index_fields)
+            logger.info(f"Stored {len(table_doc['attributes'])} attributes for {table_name} in a single document.")
         else:
             logger.warning(f"No valid attributes processed for table {table_name}")
 
-    def process_table_multiple_documents(self, table_name: str, selected_attributes: list[str]) -> None:
-        """Processes a single table, storing each attribute in its own MongoDB document."""
+    async def process_table_multiple_documents(self, table_name: str, selected_attributes: list[str]) -> None:
+        """Processes a table, storing each attribute in its own MongoDB document."""
         collection_name = f"{table_name}_attributes"
         collection = self.mongo_manager.get_collection(collection_name)
-        collection.delete_many({})
+        await collection.delete_many({})
+
+        column_value_tasks = {col: self._get_column_values(table_name, col) for col in selected_attributes}
+        results = await asyncio.gather(*column_value_tasks.values())
+        column_values_map = dict(zip(column_value_tasks.keys(), results, strict=False))
 
         documents_to_insert = []
-        for column in selected_attributes:
-            values = self._get_column_values(table_name, column)
+        for column, values in column_values_map.items():
             if values:
                 search_text = self._flatten_values_for_search(values)
                 documents_to_insert.append({
@@ -125,74 +160,45 @@ class DataCache:
                 })
 
         if documents_to_insert:
-            collection.insert_many(documents_to_insert)
-            self._create_text_index(collection, [("search_text", TEXT)])
-            logger.info(f"Stored {len(documents_to_insert)} attributes for table {table_name} in multiple documents.")
+            await collection.insert_many(documents_to_insert)
+            await self._create_text_index(collection, [("search_text", TEXT)])
+            logger.info(f"Stored {len(documents_to_insert)} attributes for {table_name} in multiple documents.")
 
-    def process_table(self, table_name: str, attributes: list[str]) -> None:
-        """Main method to determine processing strategy for a table."""
-        if not attributes:
-            logger.warning(f"No attributes to process for table {table_name}")
-            return
+    async def _get_column_values(self, table_name: str, column_name: str) -> list[Any]:
+        """Asynchronously fetches distinct, non-null values for a column from Snowflake."""
         try:
-            if len(attributes) <= self.attribute_threshold:
-                self.process_table_single_document(table_name, attributes)
-            else:
-                self.process_table_multiple_documents(table_name, attributes)
+            table_name = self._validate_identifier(table_name)
+            column_name = self._validate_identifier(column_name)
+
+            query = text("SELECT DISTINCT :column_name FROM :table_name WHERE :column_name IS NOT NULL LIMIT 5000")
+
+            with self.sf_conn.cursor() as cursor:
+                cursor.execute(query, {"column_name": column_name, "table_name": table_name})
+                return [row[0] for row in cursor if row[0] is not None]
+
         except Exception as e:
-            logger.error(f"Error processing table {table_name}: {e}")
-            raise
+            logger.debug(f"Error fetching values for {table_name}.{column_name}: {e}")
+            return []
 
-    def should_refresh_data(self) -> bool:
-        """
-        Determines if a full refresh is needed.
-        A refresh is needed if:
-        1. The last refresh date is not today.
-        2. Any required collection is empty or non-existent.
-        """
-        last_refresh_date = self.mongo_manager.get_refresh_timestamp()
-        today = datetime.date.today().isoformat()
-
-        if last_refresh_date != today:
-            logger.info("Last refresh date is not today. Refreshing data.")
-            return True
-
-        for table in self.tables_to_sync:
-            collection_name = f"{table}_attributes"
-            collection = self.mongo_manager.get_collection(collection_name)
-
-            if collection.count_documents({}) == 0:
-                logger.info(f"Collection {collection_name} is empty. Refreshing data.")
-                return True
-
-        logger.info("Data is up-to-date. Skipping refresh.")
-        return False
-
-    def refresh_tables(self) -> None:
-        """Coordinates the concurrent refreshing of all tables if a refresh is needed."""
+    @staticmethod
+    async def _create_text_index(collection: AsyncIOMotorCollection, index_fields: list[tuple[str, int]]) -> None:
+        """Drops any existing text index and creates a new one."""
         try:
-            if self.mongo_manager.db is None:
-                self.connect_mongodb()
-
-            if not self.should_refresh_data():
-                return
-
-            logger.info("Data refresh triggered for tables: " + ", ".join(self.tables_to_sync.keys()))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                futures = {
-                    executor.submit(self.process_table, table, attributes): table
-                    for table, attributes in self.tables_to_sync.items()
-                }
-                for future in concurrent.futures.as_completed(futures):
-                    table = futures[future]
-                    try:
-                        future.result()
-                        logger.info(f"Successfully processed table: {table}")
-                    except Exception as e:
-                        logger.error(f"Error processing table {table}: {e}")
-
-            self.mongo_manager.update_refresh_timestamp()
-            logger.info("Data refresh complete.")
+            existing_indexes = await collection.index_information()
+            for index_name, index_info in existing_indexes.items():
+                if any("text" in str(key) for key in index_info.get("key", [])):
+                    await collection.drop_index(index_name)
+                    break
+            if index_fields:
+                await collection.create_index(index_fields, name="text_search_idx", background=True)
+                logger.debug(f"Created text index for {collection.name}")
         except Exception as e:
-            logger.error(f"An error occurred during table processing: {e}")
-            raise
+            logger.warning(f"Could not create text index for {collection.name}: {e}")
+
+    @staticmethod
+    def _flatten_values_for_search(values: list[Any]) -> str:
+        """Flattens a list of values into a single string for text indexing. (CPU-bound)"""
+        processed_values = [
+            json.dumps(val, ensure_ascii=False) if isinstance(val, (list, dict)) else str(val).strip() for val in values
+        ]
+        return " ".join(processed_values)[:50000]
