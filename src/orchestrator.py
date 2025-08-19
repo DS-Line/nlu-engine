@@ -281,15 +281,15 @@ class Orchestrator:
         if await self._handle_greetings(greeting_task):
             return {"is_greeting": True, "response": await greeting_task}
 
-        unresolved_tokens = self._resolve_tokens(query, used_keywords_from_query)
+        matched_memory = await match_memory(query, self.agent_id, self.user_id)
+
+        unresolved_tokens = list(self._resolve_tokens(query, used_keywords_from_query) - matched_memory.keys())
 
         token_resolution_task = asyncio.create_task(self._resolve_unresolved_tokens_async(unresolved_tokens))
 
         resolved_keys_info = await asyncio.gather(token_resolution_task)
 
         all_columns, all_values = await self._classify_and_process(query_chunks, extracted_metadata)
-
-        matched_memory = await match_memory(query, self.agent_id, self.user_id)
 
         self._assemble_final_state(
             query=query,
