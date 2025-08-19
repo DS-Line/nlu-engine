@@ -11,6 +11,7 @@ from src.extractors.date_type_extractor import DateTypeHandler
 from src.handlers.chunk_classificaiton_handler import ChunkClassificationHandler
 from src.handlers.greeting_handler import GreetingHandler
 from src.handlers.question_condensation_handler import QuestionCondenseHandler
+from src.managers.memory_manager import match_memory
 from src.processors.query_processor import QueryProcessor
 from src.processors.text_preprocessor import TextPreprocessor
 from src.services.metadata_service import MetadataService
@@ -26,12 +27,13 @@ class Orchestrator:
     steps to extract meaningful metadata and classify query chunks.
     """
 
-    def __init__(self, agent_id: str, **kwargs: object) -> None:
+    def __init__(self, agent_id: str, user_id: str, **kwargs: object) -> None:
         """
         Initializes the Orchestrator with essential configurations.
 
         Args:
             agent_id (str): The unique identifier for the agent.
+            user_id (str): The unique identifier for the user.
             **kwargs: A dictionary of additional keyword arguments.
                 - db_config (Dict[str, Any]): Database configuration dictionary.
                 - clarification_history (List[Tuple[str, str]], optional): A history of previous SQL queries and user queries.
@@ -39,6 +41,7 @@ class Orchestrator:
                 - ignore_history (bool, optional): If True, the existing clarification history will be ignored.
         """
         self.agent_id = agent_id
+        self.user_id = user_id
         self._database_config = kwargs.get("db_config")
         self._metadata = kwargs.get("metadata")
         self.clarification_history = kwargs.get("clarification_history")
@@ -247,9 +250,11 @@ class Orchestrator:
         filtered_mappings = filter_value_mappings_by_query(value_to_column_map, kwargs.get("query"))
         self.state["user_query"] = kwargs.get("query")
         self.state["condensed_query"] = kwargs.get("condensed_query")
+        self.state["matched_memory"] = kwargs.get("matched_memory")
         self.state["key_resolution"] = kwargs.get("resolved_keys_info")
         self.state["value_mappings"] = filtered_mappings
         self.state["extracted_metadata"] = kwargs.get("extracted_metadata")
+        self.state["unresolved_tokens"] = kwargs.get("unresolved_tokens")
         all_columns = kwargs.get("all_columns")
         all_values = kwargs.get("all_values")
         self.state["all_columns"] = normalize_and_filter_terms(list(all_columns), self.state["value_mappings"])
@@ -268,9 +273,6 @@ class Orchestrator:
         query_processor = QueryProcessor(max_words=10)
         query_chunks = query_processor.split(query)
 
-        text_preprocessor = TextPreprocessor()
-        _query_tokens = text_preprocessor.process(query)
-
         resolved_phrases = set(used_keywords_from_query)
         single_resolved_words = set()
         for phrase in resolved_phrases:
@@ -287,6 +289,8 @@ class Orchestrator:
 
         all_columns, all_values = await self._classify_and_process(query_chunks, extracted_metadata)
 
+        matched_memory = await match_memory(query, self.agent_id, self.user_id)
+
         self._assemble_final_state(
             query=query,
             condensed_query=condensed_query,
@@ -294,9 +298,8 @@ class Orchestrator:
             all_columns=all_columns,
             all_values=all_values,
             resolved_keys_info=resolved_keys_info,
+            matched_memory=matched_memory,
+            unresolved_tokens=unresolved_tokens,
         )
 
-        logger.info(f"Unresolved Tokens: {unresolved_tokens}")
-
-        logger.info(f"Current state: {self.state}")
         return self.state

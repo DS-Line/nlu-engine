@@ -384,23 +384,14 @@ class MemoryManager:
     async def _execute_get_command(
         _agent_id: str,
         _user_id: str,
-        command_info: dict[str, Any],
+        _command_info: dict[str, Any],
         summary_memory: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Handles the logic for the 'get' command."""
-        key_to_get = command_info["input"][len("/memory.get") :].strip() or "all"
-
-        if key_to_get == "all":
-            response_text = MemoryManager._format_summary(summary_memory)
-        else:
-            found_item = MemoryManager._key_exists(summary_memory, key_to_get)
-            if found_item:
-                response_text = MemoryManager._format_summary([
-                    {"personalized_memory_context": {"Key": key_to_get, "Value": found_item["value"]}}
-                ])
-            else:
-                response_text = f"No memory found for key: '{key_to_get}'."
-
+        response_text = {
+            item["personalized_memory_context"]["Key"]: item["personalized_memory_context"]["Value"]
+            for item in summary_memory
+        }
         return {"command_handled": True, "final_answer": response_text, "status": "success"}
 
     @staticmethod
@@ -448,3 +439,22 @@ class MemoryManager:
             return await MemoryManager._execute_command(agent_id, user_id, command_info, summary_memory)
         except Exception as e:
             return {"command_handled": True, "final_answer": f"An unexpected error occurred: {e}", "status": "error"}
+
+
+async def match_memory(query: str, agent_id: str, user_id: str) -> dict[str, Any]:
+    """
+    Returns key-value pairs from memory where keys (single or multi-word) appear as exact words/phrases in the query.
+    """
+    fetched_memory = await MemoryManager.invoke(user_query="/memory.get", agent_id=agent_id, user_id=user_id)
+    memory_dict = fetched_memory.get("final_answer", {})
+    memory_dict = {k.lower(): v for k, v in memory_dict.items()}
+
+    query_lower = query.lower()
+    matched = {}
+
+    for key, value in memory_dict.items():
+        pattern = r"\b" + re.escape(key) + r"\b"
+        if re.search(pattern, query_lower):
+            matched[key] = value
+
+    return matched

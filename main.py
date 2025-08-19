@@ -24,6 +24,7 @@ class NLUEngine:
         logger.info("Denzing NLU Engine Initialized")
         self.kwargs = kwargs
         self.agent_id = kwargs.get("agent_id")
+        self.user_id = kwargs.get("user_id")
         self._db_config = kwargs.get("db_config", {})
         self._metadata = kwargs.get("metadata", [{}, {}, {}, {}])
         self._clarification_history = kwargs.get("clarification_history", [])
@@ -32,6 +33,7 @@ class NLUEngine:
         self._validate_inputs()
         self.query_handler = Orchestrator(
             agent_id=self.agent_id,
+            user_id=self.user_id,
             db_config=self._db_config,
             metadata=self._metadata,
             clarification_history=self._clarification_history,
@@ -95,6 +97,7 @@ async def nlu_engine(**kwargs: object) -> dict[str, Any] | None:
 
     arguments = {
         "agent_id": agent_id,
+        "user_id": user_id,
         "metadata": metadata,
         "db_config": db_config,
         "clarification_history": clarification_history,
