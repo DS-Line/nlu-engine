@@ -32,8 +32,7 @@ class APIClient:
     """Handles all API interactions with the backend."""
 
     def __init__(self) -> None:
-        # TODO: Change the verify to False to bypass SSL Certificate verification
-        self._client = httpx.AsyncClient(verify=True, follow_redirects=True, timeout=30.0, headers=Config.HEADERS)
+        self._client = httpx.AsyncClient(verify=False, follow_redirects=True, timeout=30.0, headers=Config.HEADERS)  # noqa S501
 
     async def __aenter__(self) -> httpx.AsyncClient:
         return self._client
@@ -64,8 +63,7 @@ class MemoryService:
         """Fetches all memories for a given user and agent."""
         url = f"{Config.BACKEND_BASE_URL}/{agent_id}/users/{user_id}/memory/"
         async with httpx.AsyncClient(
-            # TODO: Change the verify to False to bypass SSL Certificate verification
-            verify=True,
+            verify=False,  # noqa S501
             headers={"X-API-KEY": Config.CORE_INTERNAL_API_TOKEN, "Accept": "application/json"},
         ) as client:
             response = await client.get(url)
