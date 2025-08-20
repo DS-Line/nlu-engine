@@ -420,7 +420,14 @@ class SemanticParser:
         for item_name, item_content in items_to_check.items():
             dependencies = self.model._get_all_dependencies(item_content)
             for dep in dependencies:
-                if not (dep in valid_local_items or dep in valid_scoped_columns or dep in valid_common_unscoped_cols):
+                dep_valid = dep in valid_local_items or dep in valid_scoped_columns or dep in valid_common_unscoped_cols
+                if not dep_valid:
+                    for table_name in self.model.base_source_tables:
+                        qualified_dep = f"{table_name}.{dep}"
+                        if qualified_dep in valid_scoped_columns:
+                            dep_valid = True
+                            break
+                if not dep_valid:
                     raise ValidationError(
                         f"In model '{self.model.name}', item '{item_name}' has an undefined or ambiguous dependency: '{dep}'"
                     )
