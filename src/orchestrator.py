@@ -74,8 +74,6 @@ class Orchestrator:
         """
         Prepares asset names, loads metadata, sets up MongoDB, and initializes
         the async search engine.
-
-        :return: Initialized AsyncSearchEngine instance.
         """
         asset_names_for_loader = [f"sem_{t.lower()}" for t in self._tables]
         self._metadata = list(get_metadata_from_directory(asset_names_for_loader))
