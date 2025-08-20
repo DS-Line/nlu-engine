@@ -17,8 +17,8 @@ Please add a link to the Jira ticket associated with this PR.
 - [ ] Have you performed end-to-end functional testing on your changes?
 - [ ] Have you successfully ran tests with your changes locally ?
 - [ ] Is there a feature flag to toggle this feature on/off?
-- [ ]- [ ] Branch naming conventions followed? (format: `<activity-type>/<Ticket-Number>-<Short-Description>`)
-  See [Branching & Workflow Guidelines](https://yco.atlassian.net/wiki/spaces/Intelliome/pages/4259897/Environment+Branching+and+Workflow#Workflow) for details.
+- [ ] Branch naming conventions followed? (format: `<activity-type>/<Ticket-Number>-<Short-Description>`)
+      See [Branching & Workflow Guidelines](https://yco.atlassian.net/wiki/spaces/Intelliome/pages/4259897/Environment+Branching+and+Workflow#Workflow) for details.
 
 ## Notify to
 
