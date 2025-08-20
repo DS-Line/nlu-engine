@@ -117,7 +117,7 @@ class MemoryService:
     @staticmethod
     async def delete_all_memories(agent_id: str, user_id: str) -> bool:
         """Deletes all memories for a user, using a bulk endpoint if available, otherwise individually."""
-        bulk_url = f"{Config.BACKEND_BASE_URL}/{agent_id}/users/{user_id}/memory/all"
+        bulk_url = f"{Config.BACKEND_BASE_URL}/{agent_id}/users/{user_id}/memory"
         try:
             async with APIClient() as client:
                 response = await client.delete(bulk_url)
