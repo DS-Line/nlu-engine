@@ -6,14 +6,17 @@ from typing import Any
 import nltk
 from nltk.corpus import stopwords
 
+from metadata.loader import get_metadata_from_directory
 from src.exceptions import AgentIDNotFoundError, DatabaseConfigNotFoundError
 from src.extractors.date_type_extractor import DateTypeHandler
 from src.handlers.chunk_classificaiton_handler import ChunkClassificationHandler
 from src.handlers.greeting_handler import GreetingHandler
 from src.handlers.question_condensation_handler import QuestionCondenseHandler
 from src.managers.memory_manager import match_memory
+from src.managers.mongodb_manager import log_database_diagnostics, setup_mongo
 from src.processors.query_processor import QueryProcessor
 from src.processors.text_preprocessor import TextPreprocessor
+from src.services.data_search_service import AsyncSearchEngine
 from src.services.metadata_service import MetadataService
 from src.utils.logger import create_logger
 from src.utils.metadata_helper import filter_value_mappings_by_query, normalize_and_filter_terms, transform_raw_metadata
@@ -43,10 +46,11 @@ class Orchestrator:
         self.agent_id = agent_id
         self.user_id = user_id
         self._database_config = kwargs.get("db_config")
-        self._metadata = kwargs.get("metadata")
+        self._metadata: list[dict] = []
+        self._tables = kwargs.get("tables")
         self.clarification_history = kwargs.get("clarification_history")
         self._ignore_history = kwargs.get("ignore_history")
-        self.search_engine = kwargs.get("search_engine")
+        self.search_engine: AsyncSearchEngine | None = None
         self.state: dict[str, Any] = {}
         self._validate_inputs()
 
@@ -65,6 +69,21 @@ class Orchestrator:
         except (LookupError, OSError):
             nltk.download("stopwords", quiet=True)
             nltk.download("punkt", quiet=True)
+
+    async def _initialize_assets_and_search(self) -> None:
+        """
+        Prepares asset names, loads metadata, sets up MongoDB, and initializes
+        the async search engine.
+
+        :return: Initialized AsyncSearchEngine instance.
+        """
+        asset_names_for_loader = [f"sem_{t.lower()}" for t in self._tables]
+        self._metadata = list(get_metadata_from_directory(asset_names_for_loader))
+
+        mongo_manager = await setup_mongo()
+        await log_database_diagnostics(mongo_manager, self._tables)
+
+        self.search_engine = AsyncSearchEngine(mongo_manager=mongo_manager, tables_to_sync=list(self._tables.keys()))
 
     def _get_previous_queries(self) -> tuple[list[str], list[str]]:
         """
@@ -265,6 +284,7 @@ class Orchestrator:
         """
         The main handler method to process a user's query.
         """
+        await self._initialize_assets_and_search()
         greeting_task = self._start_initial_tasks(query)
         condensed_query = await self._condense_question(query)
 
