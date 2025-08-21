@@ -38,17 +38,18 @@ class GoogleAIStudio(BaseLLM, Runnable):
             google_api_key=self._api_key,
         )
 
-    def get_llm(self, _invoking_method: str | None = None) -> ChatGoogleGenerativeAI:
+    def get_llm(self, invoking_method: str | None = None) -> ChatGoogleGenerativeAI:
         """
         Returns the underlying LLM instance.
 
         Args:
-            _invoking_method: Optional string to indicate the invoking method
+            invoking_method: Optional string to indicate the invoking method
                               (kept for API consistency, unused).
 
         Returns:
             The ChatGoogleGenerativeAI instance.
         """
+        _invoking_method = invoking_method
         return self.llm
 
     def get_assistant(self) -> None:
