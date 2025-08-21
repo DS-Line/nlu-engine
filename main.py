@@ -1,9 +1,8 @@
-from typing import Any
-
 from src.exceptions import AgentIDNotFoundError, DatabaseConfigNotFoundError, UserQueryNotFoundError
 from src.managers.memory_manager import MemoryManager
 from src.orchestrator import Orchestrator
 from src.utils.logger import create_logger
+from src.utils.responses import BaseResponse, error_response, success_response
 
 logger = create_logger(level="DEBUG")
 
@@ -35,7 +34,7 @@ class NLUEngine:
         if not self._db_config:
             raise DatabaseConfigNotFoundError("Database configuration not found")
 
-    async def invoke(self, user_query: str) -> dict[str, Any]:
+    async def invoke(self, user_query: str) -> BaseResponse:
         """
         Invoke the NLU engine with the given user query.
 
@@ -69,11 +68,11 @@ class NLUEngine:
 
             result = await query_handler.invoke(user_query)
             logger.info(f"Result: {result}")
-            return result
+            return success_response(code="DZ_SUCCESS_200", message="NLU Engine run successful", data=result)
 
         except (AgentIDNotFoundError, DatabaseConfigNotFoundError, UserQueryNotFoundError) as e:
             logger.error(f"Error: {e}")
-            return {"Error": str(e)}
+            return error_response(message="Validation Error", code="DZ_ERROR_400", errors=str(e))
         except Exception as e:
             logger.critical(f"Unhandled Exception: {e}")
-            return {"Error": f"Unhandled Exception: {e}"}
+            return error_response(message="Unhandled Exception", code="DZ_ERROR_500", errors=str(e))
