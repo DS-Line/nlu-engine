@@ -8,6 +8,7 @@ import httpx
 from decouple import config
 
 from src.utils.logger import create_logger
+from src.utils.responses import BaseResponse, error_response, success_response
 
 logger = create_logger(level="DEBUG")
 
@@ -292,7 +293,7 @@ class MemoryManager:
         user_id: str,
         command_info: dict[str, Any],
         summary_memory: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """
         Dispatches the parsed command to the correct handler method.
         This method acts as the central entry point and handles
@@ -302,44 +303,48 @@ class MemoryManager:
         handler_name = MemoryManager._HANDLER_MAP.get(cmd_type)
 
         if not handler_name:
-            return {"command_handled": True, "final_answer": f"Unknown command type: {cmd_type}", "status": "error"}
+            return error_response(message="Command cannot be executed", errors=f"Unknown command type: {cmd_type}")
 
         try:
             handler_method = getattr(MemoryManager, handler_name)
             return await handler_method(agent_id, user_id, command_info, summary_memory)
         except ValueError as ve:
-            return {"command_handled": True, "final_answer": str(ve), "status": "error"}
+            return error_response(message="Value Error occured.", errors=str(ve))
         except Exception as e:
             logger.error(f"Error executing command: {e}", exc_info=True)
-            return {"command_handled": True, "final_answer": f"An unexpected error occurred: {e}", "status": "error"}
+            return error_response(message="Unexpected Error occurred.", errors=str(e))
 
     @staticmethod
     async def _execute_delete_command(
         agent_id: str, user_id: str, command_info: dict[str, Any], summary_memory: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """Handles the logic for the 'delete' command."""
         command_data = MemoryManager._extract_delete_info(command_info["input"], summary_memory)
 
         if not command_data["memory_ids"]:
-            return {
-                "command_handled": True,
-                "final_answer": MemoryManager._summarize_deletion(command_data),
-                "status": "success",
-            }
+            return success_response(
+                message="Delete command executed successfully. Memory id not available",
+                data={
+                    "command_handled": True,
+                    "final_answer": MemoryManager._summarize_deletion(command_data),
+                },
+            )
 
         tasks = [MemoryService.delete_memory_by_id(agent_id, user_id, mid) for mid in command_data["memory_ids"]]
         await asyncio.gather(*tasks)
 
-        return {
-            "command_handled": True,
-            "final_answer": MemoryManager._summarize_deletion(command_data),
-            "status": "success",
-        }
+        return success_response(
+            message="Delete command executed successfully.",
+            data={
+                "command_handled": True,
+                "final_answer": MemoryManager._summarize_deletion(command_data),
+            },
+        )
 
     @staticmethod
     async def _execute_create_command(
         agent_id: str, user_id: str, command_info: dict[str, Any], summary_memory: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """Handles the logic for the 'create' command."""
         data = MemoryManager._parse_kv_command(command_info["input"], "/memory.create")
         messages = []
@@ -354,7 +359,7 @@ class MemoryManager:
                 messages.append(f"Memory created for: '{key}':'{value}'.")
 
         final_answer = " ".join(messages).strip()
-        return {"command_handled": True, "final_answer": final_answer, "status": "success"}
+        return success_response(message="Memory has been created successfully.", data=final_answer)
 
     @staticmethod
     async def _execute_update_command(
@@ -362,7 +367,7 @@ class MemoryManager:
         user_id: str,
         command_info: dict[str, Any],
         summary_memory: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """Handles the logic for the 'update' command."""
         data = MemoryManager._parse_kv_command(command_info["input"], "/memory.update")
         messages = []
@@ -378,7 +383,7 @@ class MemoryManager:
                 messages.append(f"Key '{key}' does not exist to update.")
 
         final_answer = " ".join(messages).strip()
-        return {"command_handled": True, "final_answer": final_answer, "status": "success"}
+        return success_response(message="Memory has been updated successfully.", data=final_answer)
 
     @staticmethod
     async def _execute_get_command(
@@ -386,33 +391,29 @@ class MemoryManager:
         _user_id: str,
         _command_info: dict[str, Any],
         summary_memory: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """Handles the logic for the 'get' command."""
         response_text = {
             item["personalized_memory_context"]["Key"]: item["personalized_memory_context"]["Value"]
             for item in summary_memory
         }
-        return {"command_handled": True, "final_answer": response_text, "status": "success"}
+        return success_response(message="Memory has been fetched successfully.", data=response_text)
 
     @staticmethod
     async def _execute_clear_command(
         agent_id: str, user_id: str, user_query: str, summary_memory: list[dict[str, Any]] | None = None
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """Handles the logic for the 'clear' command."""
         logger.info(
             f"{'*' * 20} agent id :{agent_id} user id: {user_id} summary memory: {summary_memory} user query: {user_query} {'*' * 20}"
         )
         await MemoryService.delete_all_memories(agent_id, user_id)
-        return {
-            "command_handled": True,
-            "final_answer": "All summary memories have been cleared.",
-            "status": "success",
-        }
+        return success_response(message="All summary memories have been cleared.")
 
     @staticmethod
     async def invoke(
         user_query: str, agent_id: str, user_id: str, summary_memory: list[dict[str, Any]] | None = None
-    ) -> dict[str, Any]:
+    ) -> BaseResponse:
         """
         The main entry point for command processing. It handles the entire
         lifecycle from detection to execution.
@@ -420,25 +421,28 @@ class MemoryManager:
         command_info = MemoryManager._detect_command(user_query)
 
         if not command_info:
-            return {"command_handled": False, "message": "No command detected."}
+            return error_response(message="No command detected", errors={"command_handled": False})
 
         if command_info["type"] == "continue":
-            return {
-                "command_handled": True,
-                "continue_to_nlp": True,
-                "cleaned_query": user_query.replace("--", "", 1).strip(),
-            }
+            return success_response(
+                message="Previous Context Used",
+                data={
+                    "command_handled": True,
+                    "continue_to_nlp": True,
+                    "cleaned_query": user_query.replace("--", "", 1).strip(),
+                },
+            )
 
         if summary_memory is None:
             try:
                 summary_memory = await MemoryService.fetch_memories(agent_id, user_id)
             except Exception as e:
-                return {"command_handled": True, "final_answer": f"Error accessing memory: {e}", "status": "error"}
+                return error_response(message="Error accessing memory", errors=str(e))
 
         try:
             return await MemoryManager._execute_command(agent_id, user_id, command_info, summary_memory)
         except Exception as e:
-            return {"command_handled": True, "final_answer": f"An unexpected error occurred: {e}", "status": "error"}
+            return error_response(message="An unexpected error occured while executing the command", errors=str(e))
 
 
 async def match_memory(query: str, agent_id: str, user_id: str) -> dict[str, Any]:
