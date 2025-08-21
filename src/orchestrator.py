@@ -21,6 +21,7 @@ from src.services.data_search_service import AsyncSearchEngine
 from src.services.metadata_service import MetadataService
 from src.utils.logger import create_logger
 from src.utils.metadata_helper import filter_value_mappings_by_query, transform_raw_metadata
+from src.utils.responses import BaseResponse, success_response
 
 logger = create_logger(__name__)
 
@@ -251,9 +252,7 @@ class Orchestrator:
         logger.info(f"Resolved values: {keys_resolved}, Unresolved values: {keys_still_unresolved}")
         return simplified_dict
 
-    async def _classify_and_process(
-        self, query_chunks: list[str], extracted_metadata: dict[str, Any]
-    ) -> tuple[set, set]:
+    async def _classify_and_process(self, query_chunks: list[str], extracted_metadata: str) -> tuple[set, set]:
         """Helper to handle concurrent chunk classification and return results."""
         _previous_sql_queries, previous_user_queries = self._get_previous_queries()
 
@@ -276,7 +275,7 @@ class Orchestrator:
         self.state["metadata"] = kwargs.get("metadata")
         self.state["final_columns"] = kwargs.get("final_columns")
 
-    async def invoke(self, query: str) -> dict[str, Any]:
+    async def invoke(self, query: str) -> dict[str, Any] | BaseResponse:
         """
         The main handler method to process a user's query.
         """
@@ -296,9 +295,9 @@ class Orchestrator:
             single_resolved_words.update(phrase.split())
 
         _setup_mongo, query, greeting_result = await asyncio.gather(setup_mongo_task, condense_task, greeting_task)
-        (memory_mappings,) = await asyncio.gather(asyncio.create_task(match_memory(query, self.agent_id, self.user_id)))
         if isinstance(greeting_result, dict) and greeting_result.get("is_greeting"):
-            return greeting_result
+            return success_response(message="Greeting Handled", data=greeting_result.get("response"))
+        (memory_mappings,) = await asyncio.gather(asyncio.create_task(match_memory(query, self.agent_id, self.user_id)))
 
         unresolved_tokens = list(self._resolve_tokens(query, used_keywords_from_query) - memory_mappings.keys())
         (resolved_keys_info,) = await asyncio.gather(
