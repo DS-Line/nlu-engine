@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any
 
 import nltk
+from decouple import config
 from nltk.corpus import stopwords
 
 from metadata.loader import get_metadata_from_directory
@@ -19,7 +20,7 @@ from src.processors.text_preprocessor import TextPreprocessor
 from src.services.data_search_service import AsyncSearchEngine
 from src.services.metadata_service import MetadataService
 from src.utils.logger import create_logger
-from src.utils.metadata_helper import filter_value_mappings_by_query, normalize_and_filter_terms, transform_raw_metadata
+from src.utils.metadata_helper import filter_value_mappings_by_query, transform_raw_metadata
 
 logger = create_logger(__name__)
 
@@ -46,7 +47,7 @@ class Orchestrator:
         self.agent_id = agent_id
         self.user_id = user_id
         self._database_config = kwargs.get("db_config")
-        self._metadata: list[dict] = []
+        self._metadata = kwargs.get("metadata", [{}, {}, {}, {}])
         self._tables = kwargs.get("tables")
         self.clarification_history = kwargs.get("clarification_history")
         self._ignore_history = kwargs.get("ignore_history")
@@ -62,7 +63,6 @@ class Orchestrator:
             raise AgentIDNotFoundError("Agent ID cannot be None")
         if not self._database_config:
             raise DatabaseConfigNotFoundError("Database configuration not found")
-        # Download NLTK data if not present, a robust approach.
         try:
             stopwords.words("english")
             nltk.data.find("tokenizers/punkt")
@@ -70,18 +70,21 @@ class Orchestrator:
             nltk.download("stopwords", quiet=True)
             nltk.download("punkt", quiet=True)
 
-    async def _initialize_assets_and_search(self) -> None:
+    async def _setup_mongodb(self) -> None:
         """
-        Prepares asset names, loads metadata, sets up MongoDB, and initializes
-        the async search engine.
+        Checks MongoDB connection and initializes the async search engine.
         """
-        asset_names_for_loader = [f"sem_{t.lower()}" for t in self._tables]
-        self._metadata = list(get_metadata_from_directory(asset_names_for_loader))
-
         mongo_manager = await setup_mongo()
         await log_database_diagnostics(mongo_manager, self._tables)
 
         self.search_engine = AsyncSearchEngine(mongo_manager=mongo_manager, tables_to_sync=list(self._tables.keys()))
+
+    def _load_metadata(self) -> None:
+        """
+        Loads metadata for all tables and stores it in self._metadata.
+        """
+        asset_names_for_loader = [f"sem_{t.lower()}" for t in self._tables]
+        self._metadata = list(get_metadata_from_directory(asset_names_for_loader))
 
     def _get_previous_queries(self) -> tuple[list[str], list[str]]:
         """
@@ -133,7 +136,6 @@ class Orchestrator:
         all_values = set()
 
         for result in results:
-            # Assuming the dictionary keys are 'cols' and 'vals'.
             all_columns.update(result.get("COLUMNS", []))
             all_values.update(result.get("VALUES", []))
 
@@ -152,13 +154,13 @@ class Orchestrator:
             return await question_condensation_handler.handle(query)
         return query
 
-    def _process_metadata_and_query(self, query: str) -> tuple[dict, set, list]:
+    def _process_metadata_and_query(self, query: str) -> tuple[dict, set, list, dict]:
         """Helper to perform synchronous metadata and query processing."""
         metrics, attributes, columns, _functions = transform_raw_metadata(self._metadata)
         extracted_metadata, used_keywords_from_query = MetadataService(metrics, attributes, columns).invoke(query)
         query_processor = QueryProcessor(max_words=10)
         query_chunks = query_processor.split(query)
-        return extracted_metadata, used_keywords_from_query, query_chunks
+        return extracted_metadata, used_keywords_from_query, query_chunks, columns
 
     @staticmethod
     async def _handle_greetings(greeting_task: asyncio.Task) -> bool:
@@ -239,13 +241,15 @@ class Orchestrator:
                     "key_value_mappings": {},
                     "spelling_suggestion": sorted(suggestions),
                 })
-
-        logger.info(f"Resolved values: {keys_resolved}, Unresolved values: {keys_still_unresolved}")
-        return {
-            "resolution_details": resolution_details,
-            "keys_resolved_values": keys_resolved,
-            "keys_unresolved_values": keys_still_unresolved,
+        simplified_dict = {
+            item["token"]: [
+                f"{table}.{field}" for table, fields in item["key_value_mappings"].items() for field in fields
+            ]
+            for item in resolution_details
+            if item["resolved"] == "Yes"
         }
+        logger.info(f"Resolved values: {keys_resolved}, Unresolved values: {keys_still_unresolved}")
+        return simplified_dict
 
     async def _classify_and_process(
         self, query_chunks: list[str], extracted_metadata: dict[str, Any]
@@ -261,63 +265,54 @@ class Orchestrator:
 
     def _assemble_final_state(self, **kwargs: object) -> None:
         """Helper to assemble the final state dictionary."""
-        previous_sql_queries, previous_user_queries = self._get_previous_queries()
+        previous_sql_queries, _previous_user_queries = self._get_previous_queries()
         value_to_column_map = self._extract_where_filters_from_sql(previous_sql_queries)
 
         filtered_mappings = filter_value_mappings_by_query(value_to_column_map, kwargs.get("query"))
-        self.state["user_query"] = kwargs.get("query")
-        self.state["condensed_query"] = kwargs.get("condensed_query")
-        self.state["matched_memory"] = kwargs.get("matched_memory")
-        self.state["key_resolution"] = kwargs.get("resolved_keys_info")
-        self.state["value_mappings"] = filtered_mappings
-        self.state["extracted_metadata"] = kwargs.get("extracted_metadata")
-        self.state["unresolved_tokens"] = kwargs.get("unresolved_tokens")
-        all_columns = kwargs.get("all_columns")
-        all_values = kwargs.get("all_values")
-        self.state["all_columns"] = normalize_and_filter_terms(list(all_columns), self.state["value_mappings"])
-        self.state["all_values"] = normalize_and_filter_terms(list(all_values), self.state["value_mappings"])
-        self.state["previous_user_queries"] = previous_user_queries
+        self.state["query"] = kwargs.get("query")
+        self.state["memory_mappings"] = kwargs.get("memory_mappings")
+        self.state["attribute_mappings"] = kwargs.get("resolved_keys_info")
+        self.state["context_from_conditions"] = filtered_mappings
+        self.state["metadata"] = kwargs.get("metadata")
+        self.state["final_columns"] = kwargs.get("final_columns")
 
     async def invoke(self, query: str) -> dict[str, Any]:
         """
         The main handler method to process a user's query.
         """
-        await self._initialize_assets_and_search()
-        greeting_task = self._start_initial_tasks(query)
-        condensed_query = await self._condense_question(query)
+        greeting_task = asyncio.create_task(GreetingHandler().handle(query))
+        setup_mongo_task = asyncio.create_task(self._setup_mongodb())
+        condense_task = asyncio.create_task(self._condense_question(query))
 
-        extracted_metadata, used_keywords_from_query, query_chunks = self._process_metadata_and_query(query)
-
-        query_processor = QueryProcessor(max_words=10)
-        query_chunks = query_processor.split(query)
+        if config("LOAD_METADATA", default="True") == "True":
+            self._load_metadata()
+        extracted_metadata, used_keywords_from_query, _query_chunks, final_columns = self._process_metadata_and_query(
+            query
+        )
 
         resolved_phrases = set(used_keywords_from_query)
         single_resolved_words = set()
         for phrase in resolved_phrases:
             single_resolved_words.update(phrase.split())
 
-        if await self._handle_greetings(greeting_task):
-            return {"is_greeting": True, "response": await greeting_task}
+        _setup_mongo, query, greeting_result = await asyncio.gather(setup_mongo_task, condense_task, greeting_task)
+        (memory_mappings,) = await asyncio.gather(asyncio.create_task(match_memory(query, self.agent_id, self.user_id)))
+        if isinstance(greeting_result, dict) and greeting_result.get("is_greeting"):
+            return greeting_result
 
-        matched_memory = await match_memory(query, self.agent_id, self.user_id)
-
-        unresolved_tokens = list(self._resolve_tokens(query, used_keywords_from_query) - matched_memory.keys())
-
-        token_resolution_task = asyncio.create_task(self._resolve_unresolved_tokens_async(unresolved_tokens))
-
-        resolved_keys_info = await asyncio.gather(token_resolution_task)
-
-        all_columns, all_values = await self._classify_and_process(query_chunks, extracted_metadata)
+        unresolved_tokens = list(self._resolve_tokens(query, used_keywords_from_query) - memory_mappings.keys())
+        (resolved_keys_info,) = await asyncio.gather(
+            asyncio.create_task(self._resolve_unresolved_tokens_async(unresolved_tokens))
+        )
+        # TODO: Use _classify_and_process  to handle query_chunks and extracted_metadata with asyncio tasks.
+        #       Filter _all_columns and _all_values using normalize_and_filter_terms against value mappings.
 
         self._assemble_final_state(
             query=query,
-            condensed_query=condensed_query,
-            extracted_metadata=extracted_metadata,
-            all_columns=all_columns,
-            all_values=all_values,
+            metadata=extracted_metadata,
             resolved_keys_info=resolved_keys_info,
-            matched_memory=matched_memory,
-            unresolved_tokens=unresolved_tokens,
+            memory_mappings=memory_mappings,
+            final_columns=final_columns,
         )
 
         return self.state
