@@ -79,11 +79,8 @@ class GoogleAIStudio(BaseLLM, Runnable):
             raise NotImplementedError("Only 'llm' mode is supported for GoogleAIStudio.")
 
         try:
-            if isinstance(prompt, str):
-                result = self.llm.invoke([HumanMessage(content=prompt)])
-            else:
-                result = self.llm.invoke(prompt)
-            return result.content
+            filtered_prompt = [HumanMessage(content=prompt)] if isinstance(prompt, str) else prompt
+            return self.llm.invoke(filtered_prompt).content
         except Exception as err:
             raise RuntimeError(f"GoogleAIStudio LLM failed: {err}") from err
 

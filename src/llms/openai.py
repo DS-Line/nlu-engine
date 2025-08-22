@@ -60,12 +60,7 @@ class OpenAI(BaseLLM):
         """
         model = model if model is not None else self._model
         temperature = temperature if temperature is not None else self._temperature
-        if model not in {"o1-mini", "o1", "o1-preview", "o3-mini", "o3", "o3-preview", "o4-mini"}:
-            llm = ChatOpenAI(api_key=self._openai_api_key, model=model, temperature=temperature)
-
-        else:
-            llm = ChatOpenAI(api_key=self._openai_api_key, model=model, temperature=temperature)
-        return llm
+        return ChatOpenAI(api_key=self._openai_api_key, model=model, temperature=temperature)
 
     def create_assistant(self) -> None:
         """
@@ -138,11 +133,7 @@ class OpenAI(BaseLLM):
             Exception: If an error occurs during the completion process.
         """
         try:
-            if mode == "llm":
-                result = self._llm.invoke(prompt)
-                return result.content
-
-            result = self._assistant.invoke(prompt)
+            result = self._llm.invoke(prompt) if mode == "llm" else self._assistant.invoke(prompt)
             return result.content
 
         except Exception as e:
