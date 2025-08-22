@@ -52,13 +52,10 @@ class TextPreprocessor:
 
         lower_query = query.lower()
         tokens = self._token_pattern.findall(lower_query)
-
         tagged_tokens = pos_tag(tokens)
 
-        lemmatized_tokens = []
-        for word, tag in tagged_tokens:
-            lemma = self._lemmatizer.lemmatize(word, get_wordnet_pos(tag))
-            if lemma not in self._stopwords:
-                lemmatized_tokens.append(lemma)
-
-        return lemmatized_tokens
+        return [
+            self._lemmatizer.lemmatize(word, get_wordnet_pos(tag))
+            for word, tag in tagged_tokens
+            if self._lemmatizer.lemmatize(word, get_wordnet_pos(tag)) not in self._stopwords
+        ]

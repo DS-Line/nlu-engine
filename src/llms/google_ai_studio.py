@@ -3,7 +3,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables.base import Runnable, RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from llms.base import BaseLLM
+from src.llms.base import BaseLLM
 
 
 class GoogleAIStudio(BaseLLM, Runnable):

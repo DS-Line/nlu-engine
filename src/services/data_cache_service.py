@@ -6,9 +6,12 @@ import re
 from typing import Any
 
 import nltk
+from nltk.corpus import wordnet
+
+from src.utils.logger import create_logger
 
 try:
-    pass
+    wordnet.synsets("example")
 except (LookupError, OSError):
     nltk.download("wordnet", quiet=True)
 
@@ -20,7 +23,7 @@ from sqlalchemy import text
 
 from src.managers.mongodb_manager import AsyncMongoDBManager
 
-logger = logging.getLogger(__name__)
+logger = create_logger("DEBUG")
 
 
 class AsyncDataCache:
@@ -51,19 +54,34 @@ class AsyncDataCache:
             raise ValueError(f"Invalid SQL identifier: {identifier}")
         return identifier
 
+    @staticmethod
+    def log_task_results(results: list[str], table_names: list[str], logger: logging.Logger) -> None:
+        """
+        Logs the outcome of processing tasks for a set of tables.
+
+        For each result-table pair, logs an error message if the result is an Exception,
+        or an info message if the task was successful.
+        """
+        for task_result, table_name in zip(results, table_names, strict=False):
+            if isinstance(task_result, Exception):
+                logger.error(f"Error processing table {table_name}: {task_result}")
+            else:
+                logger.info(f"Successfully processed table: {table_name}")
+
     async def refresh_tables(self) -> None:
         """
         Coordinates the concurrent refreshing of all tables if a refresh is needed.
         This is the main entry point for the caching process.
         """
         try:
-            # Ensure the MongoDB connection is verified
             await self.mongo_manager.connect()
             if not await self.should_refresh_data():
                 return
             logger.info("Data refresh triggered for tables: " + ", ".join(self.tables_to_sync.keys()))
             process_tasks = list(starmap(self.process_table, self.tables_to_sync.items()))
             results = await asyncio.gather(*process_tasks, return_exceptions=True)
+
+            self.log_task_results(results, self.tables_to_sync.keys(), logger)
 
             for task_result, table_name in zip(results, self.tables_to_sync.keys(), strict=False):
                 if isinstance(task_result, Exception):
@@ -76,7 +94,6 @@ class AsyncDataCache:
 
         except Exception as e:
             logger.error(f"An error occurred during the table refresh process: {e}")
-            raise
 
     async def should_refresh_data(self) -> bool:
         """

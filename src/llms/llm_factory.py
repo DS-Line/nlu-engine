@@ -3,7 +3,7 @@ from inspect import getmembers, isabstract, isclass
 
 from decouple import config
 
-from llms.base import BaseLLM
+from src.llms.base import BaseLLM
 
 
 class LLMFactory:
@@ -11,7 +11,7 @@ class LLMFactory:
     Factory class for LLM
     """
 
-    _package = "llms"
+    _package = "src.llms"
 
     @staticmethod
     def load_module(module_name: str) -> BaseLLM | None:
@@ -31,4 +31,4 @@ class LLMFactory:
         raise ImportError
 
 
-llm = LLMFactory.load_module(config("LLM_PROVIDER"))
+llm = LLMFactory.load_module(config("PROVIDER"))

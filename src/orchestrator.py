@@ -7,7 +7,6 @@ import nltk
 from decouple import config
 from nltk.corpus import stopwords
 
-from metadata.loader import get_metadata_from_directory
 from src.exceptions import AgentIDNotFoundError, DatabaseConfigNotFoundError
 from src.extractors.date_type_extractor import DateTypeHandler
 from src.handlers.chunk_classificaiton_handler import ChunkClassificationHandler
@@ -15,6 +14,7 @@ from src.handlers.greeting_handler import GreetingHandler
 from src.handlers.question_condensation_handler import QuestionCondenseHandler
 from src.managers.memory_manager import match_memory
 from src.managers.mongodb_manager import log_database_diagnostics, setup_mongo
+from src.metadata.loader import get_metadata_from_directory
 from src.processors.query_processor import QueryProcessor
 from src.processors.text_preprocessor import TextPreprocessor
 from src.services.data_search_service import AsyncSearchEngine
@@ -62,7 +62,7 @@ class Orchestrator:
         """
         if self.agent_id is None:
             raise AgentIDNotFoundError("Agent ID cannot be None")
-        if not self._database_config:
+        if self._database_config is None:
             raise DatabaseConfigNotFoundError("Database configuration not found")
         try:
             stopwords.words("english")
@@ -104,16 +104,16 @@ class Orchestrator:
         pattern = re.compile(r"(?:UPPER|LOWER)?\(?([\w\.]+)\)?\s*(=|ILIKE|LIKE)\s*'([^']+)'", re.IGNORECASE)
         for query in previous_sql_queries:
             where_match = re.search(r"\bWHERE\b(.*)", query, re.IGNORECASE | re.DOTALL)
-            if where_match:
-                where_clause = where_match.group(1)
-                conditions = re.split(r"\s+(?:AND|OR)\s+", where_clause, flags=re.IGNORECASE)
-                for condition in conditions:
-                    match = pattern.search(condition.strip())
-                    if match:
-                        column, _, value = match.groups()
-                        column = column.split(".")[-1].upper()
-                        value = value.strip("%").lower()
-                        value_to_column[value] = column
+            if not where_match:
+                continue
+            where_clause = where_match.group(1)
+            conditions = re.split(r"\s+(?:AND|OR)\s+", where_clause, flags=re.IGNORECASE)
+            for condition in conditions:
+                match = pattern.search(condition.strip())
+                if not match:
+                    continue
+                column, _, value = match.groups()
+                value_to_column[value.strip("%").lower()] = column.split(".")[-1].upper()
         return value_to_column
 
     @staticmethod
@@ -133,12 +133,8 @@ class Orchestrator:
 
         results = await asyncio.gather(*classification_tasks)
 
-        all_columns = set()
-        all_values = set()
-
-        for result in results:
-            all_columns.update(result.get("COLUMNS", []))
-            all_values.update(result.get("VALUES", []))
+        all_columns = {col for result in results for col in result.get("COLUMNS", [])}
+        all_values = {val for result in results for val in result.get("VALUES", [])}
 
         return all_columns, all_values
 
@@ -199,58 +195,91 @@ class Orchestrator:
 
         logger.debug(f"Attempting to resolve tokens concurrently: {unresolved_tokens}")
 
-        search_tasks = [self.search_engine.perform_combined_search_async(token) for token in unresolved_tokens]
-        suggestion_tasks = [self.search_engine.perform_spelling_suggestions_async(token) for token in unresolved_tokens]
+        search_results, suggestion_results = await self._run_searches(unresolved_tokens)
 
-        all_search_results = await asyncio.gather(*search_tasks)
-        all_suggestion_results = await asyncio.gather(*suggestion_tasks)
-
-        resolution_details = []
-        keys_resolved = []
-        keys_still_unresolved = []
+        resolution_details: list[dict[str, Any]] = []
+        keys_resolved: list[str] = []
+        keys_unresolved: list[str] = []
 
         for token, separated_results, spelling_suggestions in zip(
-            unresolved_tokens, all_search_results, all_suggestion_results, strict=False
+            unresolved_tokens, search_results, suggestion_results, strict=False
         ):
-            exact_matches = separated_results.get("exact", [])
+            self._process_token_resolution(
+                token=token,
+                separated_results=separated_results,
+                spelling_suggestions=spelling_suggestions,
+                keys_resolved=keys_resolved,
+                keys_unresolved=keys_unresolved,
+                resolution_details=resolution_details,
+            )
 
-            if exact_matches:
-                keys_resolved.append(token)
-                mappings = defaultdict(set)
-                for match in exact_matches:
-                    table, attribute = match.get("table"), match.get("attribute")
-                    if table and attribute:
-                        mappings[table].add(attribute)
+        simplified_dict = self._build_simplified_dict(resolution_details)
+        logger.info(f"Resolved values: {keys_resolved}, Unresolved values: {keys_unresolved}")
+        return simplified_dict
 
-                final_mappings = {table: sorted(attrs) for table, attrs in mappings.items()}
-                resolution_details.append({
-                    "token": token,
-                    "resolved": "Yes",
-                    "key_value_mappings": final_mappings,
-                    "spelling_suggestion": [],
-                })
-            else:
-                keys_still_unresolved.append(token)
-                fuzzy_matches = separated_results.get("fuzzy", [])
-                suggestions = set(spelling_suggestions or [])
-                for f_match in fuzzy_matches:
-                    suggestions.update(f_match.get("matched_values", []))
+    async def _run_searches(self, tokens: list[str]) -> tuple[list[Any], list[Any]]:
+        """Runs both combined search and spelling suggestion tasks concurrently."""
+        search_tasks = [self.search_engine.perform_combined_search_async(token) for token in tokens]
+        suggestion_tasks = [self.search_engine.perform_spelling_suggestions_async(token) for token in tokens]
+        return await asyncio.gather(*search_tasks), await asyncio.gather(*suggestion_tasks)
 
-                resolution_details.append({
-                    "token": token,
-                    "resolved": "No",
-                    "key_value_mappings": {},
-                    "spelling_suggestion": sorted(suggestions),
-                })
-        simplified_dict = {
+    def _process_token_resolution(self, **kwargs: object) -> None:
+        """Processes a single token and updates resolution lists/details."""
+        token: str = kwargs["token"]
+        separated_results: dict[str, Any] = kwargs["separated_results"]
+        spelling_suggestions: list[str] | None = kwargs.get("spelling_suggestions")
+        keys_resolved: list[str] = kwargs["keys_resolved"]
+        keys_unresolved: list[str] = kwargs["keys_unresolved"]
+        resolution_details: list[dict[str, Any]] = kwargs["resolution_details"]
+        exact_matches = separated_results.get("exact", [])
+        if exact_matches:
+            keys_resolved.append(token)
+            resolution_details.append({
+                "token": token,
+                "resolved": "Yes",
+                "key_value_mappings": self._build_exact_mapping(exact_matches),
+                "spelling_suggestion": [],
+            })
+            return
+
+        keys_unresolved.append(token)
+        resolution_details.append({
+            "token": token,
+            "resolved": "No",
+            "key_value_mappings": {},
+            "spelling_suggestion": self._build_fuzzy_suggestions(separated_results, spelling_suggestions),
+        })
+
+    @staticmethod
+    def _build_exact_mapping(exact_matches: list[dict[str, Any]]) -> dict[str, list[str]]:
+        """Builds table-to-attributes mapping from exact matches."""
+        mappings: dict[str, set[str]] = defaultdict(set)
+        for match in exact_matches:
+            table, attribute = match.get("table"), match.get("attribute")
+            if table and attribute:
+                mappings[table].add(attribute)
+        return {table: sorted(attrs) for table, attrs in mappings.items()}
+
+    @staticmethod
+    def _build_fuzzy_suggestions(
+        separated_results: dict[str, Any], spelling_suggestions: list[str] | None
+    ) -> list[str]:
+        """Combines fuzzy match values and spelling suggestions into a sorted list."""
+        suggestions = set(spelling_suggestions or [])
+        for f_match in separated_results.get("fuzzy", []):
+            suggestions.update(f_match.get("matched_values", []))
+        return sorted(suggestions)
+
+    @staticmethod
+    def _build_simplified_dict(resolution_details: list[dict[str, Any]]) -> dict[str, list[str]]:
+        """Builds a simplified token-to-columns mapping for resolved tokens."""
+        return {
             item["token"]: [
                 f"{table}.{field}" for table, fields in item["key_value_mappings"].items() for field in fields
             ]
             for item in resolution_details
             if item["resolved"] == "Yes"
         }
-        logger.info(f"Resolved values: {keys_resolved}, Unresolved values: {keys_still_unresolved}")
-        return simplified_dict
 
     async def _classify_and_process(self, query_chunks: list[str], extracted_metadata: str) -> tuple[set, set]:
         """Helper to handle concurrent chunk classification and return results."""

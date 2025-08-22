@@ -77,22 +77,32 @@ class QueryProcessor:
         current_word_count = 0
 
         for word in words:
-            # Increment count only for meaningful words
             is_meaningful = word.lower() not in self.stop_words and word.isalnum()
-
-            if is_meaningful and current_word_count >= self.max_words:
-                chunks.append(" ".join(current_chunk))
-                current_chunk = [word]
-                current_word_count = 1
-            else:
-                current_chunk.append(word)
-                if is_meaningful:
-                    current_word_count += 1
+            current_chunk, current_word_count, chunks = self._add_word_to_chunks(
+                word, current_chunk, current_word_count, chunks, is_meaningful=is_meaningful
+            )
 
         if current_chunk:
             chunks.append(" ".join(current_chunk))
 
         return chunks
+
+    def _add_word_to_chunks(
+        self, word: str, current_chunk: list[str], current_word_count: int, chunks: list[str], *, is_meaningful: bool
+    ) -> tuple[list[str], int, list[str]]:
+        """
+        Handles adding a word to the current chunk, starting a new chunk if the max word count is reached.
+        """
+        if is_meaningful and current_word_count >= self.max_words:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = [word]
+            current_word_count = 1
+        else:
+            current_chunk.append(word)
+            if is_meaningful:
+                current_word_count += 1
+
+        return current_chunk, current_word_count, chunks
 
     def _build_chunks_from_parts(self, parts: list[str], recursive_splitter: Callable[[str], list[str]]) -> list[str]:
         """

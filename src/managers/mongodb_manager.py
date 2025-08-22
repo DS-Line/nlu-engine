@@ -8,8 +8,9 @@ from pymongo.errors import ConnectionFailure
 from src.utils.logger import create_logger
 
 logger = create_logger(level="DEBUG")
-MONGO_URI = config("KV_STORE_CONNECTION_URI")
-MONGO_DB = config("KV_STORE_NAME")
+
+MONGO_URI: str = config("KV_STORE_CONNECTION_URI")
+MONGO_DB: str = config("KV_STORE_NAME")
 
 
 class AsyncMongoDBManager:

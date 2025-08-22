@@ -4,8 +4,8 @@ from typing import Any
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 
-from llms.llm_factory import llm
 from src.handlers.base import Handler
+from src.llms.llm_factory import llm
 from src.prompts.prompt import Prompt
 from src.utils.execution_time_tracker import capture_execution_time
 

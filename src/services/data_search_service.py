@@ -1,8 +1,9 @@
 import asyncio
 import difflib
-import logging
 import re
 from typing import Any
+
+from src.utils.logger import create_logger
 
 try:
     from nltk.corpus import wordnet
@@ -15,14 +16,16 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 
 from src.managers.mongodb_manager import AsyncMongoDBManager
 
-logger = logging.getLogger(__name__)
+logger = create_logger("DEBUG")
+
 SINGLE_CHAR_CHECK_LENGTH = 3
 FUZZY_THRESHOLD = 0.8
-SHORT_WORD_LENGTH = 4
-MEDIUM_WORD_LENGTH = 8
-SHORT_WORD_MAX_EDIT = 1
-MEDIUM_WORD_MAX_EDIT = 2
-LONG_WORD_MAX_EDIT = 3
+
+WORD_CONFIG = {
+    "short": {"length": 4, "max_edit": 1},
+    "medium": {"length": 8, "max_edit": 2},
+    "long": {"max_edit": 3},
+}
 
 
 class AsyncSearchEngine:
@@ -292,12 +295,12 @@ class AsyncSearchEngine:
             return False
         edit_dist = self._levenshtein_distance(search_word, candidate_word)
 
-        if len(search_word) <= SHORT_WORD_LENGTH:
-            max_edit_dist = SHORT_WORD_MAX_EDIT
-        elif len(search_word) <= MEDIUM_WORD_LENGTH:
-            max_edit_dist = MEDIUM_WORD_MAX_EDIT
+        if len(search_word) <= WORD_CONFIG["short"]["length"]:
+            max_edit_dist = WORD_CONFIG["short"]["max_edit"]
+        elif len(search_word) <= WORD_CONFIG["medium"]["length"]:
+            max_edit_dist = WORD_CONFIG["medium"]["max_edit"]
         else:
-            max_edit_dist = LONG_WORD_MAX_EDIT
+            max_edit_dist = WORD_CONFIG["long"]["length"]
 
         return edit_dist <= max_edit_dist
 
