@@ -1,11 +1,11 @@
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
-from src.handlers.base import Handler
-from src.llms.llm_factory import llm
-from src.prompts.prompt import Prompt
-from src.utils.execution_time_tracker import capture_execution_time
-from src.utils.logger import create_logger
+from nlu_engine.handlers.base import Handler
+from nlu_engine.llms.llm_factory import llm
+from nlu_engine.prompts.prompt import Prompt
+from nlu_engine.utils.execution_time_tracker import capture_execution_time
+from nlu_engine.utils.logger import create_logger
 
 logger = create_logger(level="DEBUG")
 

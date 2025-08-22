@@ -7,21 +7,21 @@ import nltk
 from decouple import config
 from nltk.corpus import stopwords
 
-from src.exceptions import AgentIDNotFoundError, DatabaseConfigNotFoundError
-from src.extractors.date_type_extractor import DateTypeHandler
-from src.handlers.chunk_classificaiton_handler import ChunkClassificationHandler
-from src.handlers.greeting_handler import GreetingHandler
-from src.handlers.question_condensation_handler import QuestionCondenseHandler
-from src.managers.memory_manager import match_memory
-from src.managers.mongodb_manager import log_database_diagnostics, setup_mongo
-from src.metadata.loader import get_metadata_from_directory
-from src.processors.query_processor import QueryProcessor
-from src.processors.text_preprocessor import TextPreprocessor
-from src.services.data_search_service import AsyncSearchEngine
-from src.services.metadata_service import MetadataService
-from src.utils.logger import create_logger
-from src.utils.metadata_helper import filter_value_mappings_by_query, transform_raw_metadata
-from src.utils.responses import BaseResponse, success_response
+from nlu_engine.exceptions import AgentIDNotFoundError, DatabaseConfigNotFoundError
+from nlu_engine.extractors.date_type_extractor import DateTypeHandler
+from nlu_engine.handlers.chunk_classificaiton_handler import ChunkClassificationHandler
+from nlu_engine.handlers.greeting_handler import GreetingHandler
+from nlu_engine.handlers.question_condensation_handler import QuestionCondenseHandler
+from nlu_engine.managers.memory_manager import match_memory
+from nlu_engine.managers.mongodb_manager import log_database_diagnostics, setup_mongo
+from nlu_engine.metadata.loader import get_metadata_from_directory
+from nlu_engine.processors.query_processor import QueryProcessor
+from nlu_engine.processors.text_preprocessor import TextPreprocessor
+from nlu_engine.services.data_search_service import AsyncSearchEngine
+from nlu_engine.services.metadata_service import MetadataService
+from nlu_engine.utils.logger import create_logger
+from nlu_engine.utils.metadata_helper import filter_value_mappings_by_query, transform_raw_metadata
+from nlu_engine.utils.responses import BaseResponse, success_response
 
 logger = create_logger(__name__)
 

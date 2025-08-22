@@ -6,7 +6,7 @@ from decouple import config
 from langchain.agents.openai_assistant import OpenAIAssistantRunnable
 from langchain_openai import ChatOpenAI
 
-from src.llms.base import BaseLLM
+from nlu_engine.llms.base import BaseLLM
 
 
 @dataclass

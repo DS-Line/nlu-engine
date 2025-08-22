@@ -2,7 +2,7 @@ import re
 
 import dateparser
 
-from src.handlers.base import Handler
+from nlu_engine.handlers.base import Handler
 
 
 class DateTypeHandler(Handler):

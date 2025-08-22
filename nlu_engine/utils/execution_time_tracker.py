@@ -4,7 +4,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, TypeVar
 
-from src.utils.logger import create_logger
+from nlu_engine.utils.logger import create_logger
 
 logger = create_logger(level="DEBUG")
 

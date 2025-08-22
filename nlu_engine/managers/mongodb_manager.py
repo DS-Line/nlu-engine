@@ -5,7 +5,7 @@ from decouple import config
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo.errors import ConnectionFailure
 
-from src.utils.logger import create_logger
+from nlu_engine.utils.logger import create_logger
 
 logger = create_logger(level="DEBUG")
 

@@ -1,7 +1,7 @@
 import re
 from typing import ClassVar
 
-from src.handlers.base import Handler
+from nlu_engine.handlers.base import Handler
 
 
 class RatioTypeHandler(Handler):

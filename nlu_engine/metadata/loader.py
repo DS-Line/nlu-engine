@@ -5,7 +5,7 @@ from typing import Any, ClassVar, Union
 
 import yaml
 
-from src.utils.logger import create_logger
+from nlu_engine.utils.logger import create_logger
 
 logger = create_logger(level="DEBUG")
 

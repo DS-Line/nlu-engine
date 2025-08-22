@@ -3,7 +3,7 @@ import difflib
 import re
 from typing import Any
 
-from src.utils.logger import create_logger
+from nlu_engine.utils.logger import create_logger
 
 try:
     from nltk.corpus import wordnet
@@ -14,7 +14,7 @@ except ImportError:
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
-from src.managers.mongodb_manager import AsyncMongoDBManager
+from nlu_engine.managers.mongodb_manager import AsyncMongoDBManager
 
 logger = create_logger("DEBUG")
 

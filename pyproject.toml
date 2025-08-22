@@ -23,14 +23,14 @@ dependencies = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "."}
+include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["nlu_engine"]
+include = ["nlu_engine*"]
 
 [tool.setuptools.package-data]
-"prompts.assets" = ["*.tmpl"]
+"nlu_engine.prompts.assets" = ["*.tmpl"]
 
 [tool.ruff]
 line-length = 88

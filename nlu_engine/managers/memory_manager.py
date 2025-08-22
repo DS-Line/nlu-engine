@@ -7,8 +7,8 @@ from typing import Any, ClassVar
 import httpx
 from decouple import config
 
-from src.utils.logger import create_logger
-from src.utils.responses import BaseResponse, error_response, success_response
+from nlu_engine.utils.logger import create_logger
+from nlu_engine.utils.responses import BaseResponse, error_response, success_response
 
 logger = create_logger(level="DEBUG")
 

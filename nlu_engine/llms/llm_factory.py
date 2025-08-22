@@ -3,7 +3,7 @@ from inspect import getmembers, isabstract, isclass
 
 from decouple import config
 
-from src.llms.base import BaseLLM
+from nlu_engine.llms.base import BaseLLM
 
 
 class LLMFactory:
@@ -11,7 +11,7 @@ class LLMFactory:
     Factory class for LLM
     """
 
-    _package = "src.llms"
+    _package = "nlu_engine.llms"
 
     @staticmethod
     def load_module(module_name: str) -> BaseLLM | None:

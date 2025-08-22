@@ -8,7 +8,7 @@ from typing import Any
 import nltk
 from nltk.corpus import wordnet
 
-from src.utils.logger import create_logger
+from nlu_engine.utils.logger import create_logger
 
 try:
     wordnet.synsets("example")
@@ -21,7 +21,7 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo import TEXT
 from sqlalchemy import text
 
-from src.managers.mongodb_manager import AsyncMongoDBManager
+from nlu_engine.managers.mongodb_manager import AsyncMongoDBManager
 
 logger = create_logger("DEBUG")
 
