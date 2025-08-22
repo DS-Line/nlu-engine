@@ -300,7 +300,7 @@ class AsyncSearchEngine:
         elif len(search_word) <= WORD_CONFIG["medium"]["length"]:
             max_edit_dist = WORD_CONFIG["medium"]["max_edit"]
         else:
-            max_edit_dist = WORD_CONFIG["long"]["length"]
+            max_edit_dist = WORD_CONFIG["long"]["max_edit"]
 
         return edit_dist <= max_edit_dist
 
