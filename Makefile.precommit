@@ -1,11 +1,19 @@
 .PHONY: install-hooks install-deps ensure-pre-commit secrets-baseline run run-all run-push update clean
 
-# Check if pre-commit is installed
+# Ensure pre-commit is installed and up-to-date
 ensure-pre-commit:
+	@echo "Checking pre-commit..."
 	@if ! command -v pre-commit >/dev/null 2>&1; then \
 		echo "Installing pre-commit..."; \
+		pip install --upgrade pip setuptools wheel; \
 		pip install pre-commit; \
+	else \
+		echo "Pre-commit already installed. Upgrading..."; \
+		pip install --upgrade pre-commit; \
 	fi
+	@echo "Cleaning pre-commit cache..."; \
+	pre-commit clean
+
 
 # Install common Python tools (optional; edit as needed)
 install-deps:

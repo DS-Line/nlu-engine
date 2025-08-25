@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nlu-engine"
+version = "0.1.0"
+description = "A Python NLU engine for natural language processing."
+
+dependencies = [
+    "dateparser==1.2.2",
+    "httpx==0.28.1",
+    "langchain==0.3.27",
+    "langchain-core==0.3.74",
+    "langchain-google-genai==2.1.9",
+    "langchain-openai==0.3.30",
+    "motor==3.7.1",
+    "nltk==3.9.1",
+    "pymongo==4.14.0",
+    "python-decouple==3.8",
+    "PyYAML==6.0.2",
+    "SQLAlchemy==2.0.43",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["nlu_engine*"]
+
+[tool.setuptools.package-data]
+"nlu_engine.prompts.assets" = ["*.tmpl"]
+
+[tool.ruff]
+line-length = 88
+exclude = ["__pycache__", "node_modules", "logs"]

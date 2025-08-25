@@ -1,0 +1,12 @@
+dateparser==1.2.2
+httpx==0.28.1
+langchain==0.3.27
+langchain_core==0.3.74
+langchain_google_genai==2.1.9
+langchain_openai==0.3.30
+motor==3.7.1
+nltk==3.9.1
+pymongo==4.14.0
+python-decouple==3.8
+PyYAML==6.0.2
+SQLAlchemy==2.0.43
