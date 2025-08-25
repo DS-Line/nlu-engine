@@ -450,7 +450,7 @@ async def match_memory(query: str, agent_id: str, user_id: str) -> dict[str, Any
     Returns key-value pairs from memory where keys (single or multi-word) appear as exact words/phrases in the query.
     """
     fetched_memory = await MemoryManager.invoke(user_query="/memory.get", agent_id=agent_id, user_id=user_id)
-    memory_dict = fetched_memory.get("final_answer", {})
+    memory_dict = fetched_memory.get("data", {})
     memory_dict = {k.lower(): v for k, v in memory_dict.items()}
 
     query_lower = query.lower()
