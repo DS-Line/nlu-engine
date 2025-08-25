@@ -79,37 +79,3 @@ async def setup_mongo() -> AsyncMongoDBManager:
     if not await mongo_manager.health_check():
         raise RuntimeError("MongoDB connection is not healthy")
     return mongo_manager
-
-
-async def log_database_diagnostics(
-    mongo_manager: AsyncMongoDBManager, tables: dict[str, Any], sample_limit: int = 1
-) -> None:
-    """
-    Log collections and sample documents for diagnostics based on provided tables.
-
-    :param mongo_manager: The AsyncMongoDBManager instance.
-    :param tables: Dictionary of table names to inspect.
-    :param sample_limit: Number of sample documents to log per collection.
-    """
-    logger.info("--- STARTING ASYNC DATABASE DIAGNOSTICS ---")
-    try:
-        db = mongo_manager.db
-        all_collections = await db.list_collection_names()
-        logger.info(f"Collections in '{MONGO_DB}': {all_collections}")
-
-        expected_collections = [f"{table_name}_attributes" for table_name in tables]
-
-        for collection_name in expected_collections:
-            if collection_name in all_collections:
-                collection = db[collection_name]
-                doc_count = await collection.count_documents({})
-                logger.info(f"'{collection_name}' contains {doc_count} documents.")
-
-                if doc_count > 0:
-                    async for doc in collection.find().limit(sample_limit):
-                        logger.info(doc)
-            else:
-                logger.warning(f"Expected collection '{collection_name}' not found.")
-    except Exception as e:
-        logger.error(f"Database diagnostics error: {e}")
-    logger.info("--- ENDING ASYNC DATABASE DIAGNOSTICS ---")

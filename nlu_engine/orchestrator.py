@@ -13,7 +13,7 @@ from nlu_engine.handlers.chunk_classificaiton_handler import ChunkClassification
 from nlu_engine.handlers.greeting_handler import GreetingHandler
 from nlu_engine.handlers.question_condensation_handler import QuestionCondenseHandler
 from nlu_engine.managers.memory_manager import match_memory
-from nlu_engine.managers.mongodb_manager import log_database_diagnostics, setup_mongo
+from nlu_engine.managers.mongodb_manager import setup_mongo
 from nlu_engine.metadata.loader import get_metadata_from_directory
 from nlu_engine.processors.query_processor import QueryProcessor
 from nlu_engine.processors.text_preprocessor import TextPreprocessor
@@ -76,8 +76,6 @@ class Orchestrator:
         Checks MongoDB connection and initializes the async search engine.
         """
         mongo_manager = await setup_mongo()
-        await log_database_diagnostics(mongo_manager, self._tables)
-
         self.search_engine = AsyncSearchEngine(mongo_manager=mongo_manager, tables_to_sync=list(self._tables.keys()))
 
     def _load_metadata(self) -> None:
